@@ -1,12 +1,12 @@
-= lasem-ruby
+= lasem
 
 Ruby bindings for the Lasem SVG and MathML rendering library.
 
 == Purpose
 
-`lasem-ruby` is a thin native wrapper around Lasem. It delegates parsing,
-layout, and rendering behavior to the Lasem C API, and keeps the Ruby layer
-focused on input validation, ergonomic entry points, and predictable errors.
+`lasem` is a thin native wrapper around Lasem. It delegates parsing, layout,
+and rendering behavior to the Lasem C API, and keeps the Ruby layer focused on
+input validation, ergonomic entry points, and predictable errors.
 
 The initial API renders MathML, SVG, and Lasem's itex/LaTeX input to SVG, PNG,
 PDF, or PS output:
@@ -18,6 +18,24 @@ require "lasem"
 svg = Lasem.render_mathml(mathml_string, format: :svg)
 png = Lasem.render_latex("\\sqrt{x}", format: :png, ppi: 72.0)
 ----
+
+The source repository is named `lasem-ruby` to make the language binding clear,
+but the gem is named `lasem` because the public Ruby API is already namespaced
+as `Lasem`.
+
+== Background
+
+Plurimath image-rendering work originally depended on a `lasem-render`
+executable being available on the user's machine. This gem keeps that dependency
+inside Ruby instead: applications can call `Lasem.render_*` methods and let the
+native extension use Lasem directly.
+
+The `mathematical` gem is the closest prior Ruby example. It wraps Lasem for
+TeX math image output, but its rendering code is coupled to that gem's TeX
+parser, API shape, and packaging. This project uses the same underlying Lasem
+and Cairo idea while keeping the wrapper focused on Lasem itself, so Plurimath
+can depend on it without mixing native rendering code into the main Plurimath
+repository.
 
 == Native dependency strategy
 
