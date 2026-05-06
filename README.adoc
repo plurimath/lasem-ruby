@@ -4,11 +4,93 @@ Ruby bindings for the Lasem SVG and MathML rendering library.
 
 == Purpose
 
-`lasem-ruby` is intended to provide a Ruby API for rendering MathML, SVG, and
-Lasem-supported TeX input through the Lasem C library.
+`lasem-ruby` is a thin native wrapper around Lasem. It delegates parsing,
+layout, and rendering behavior to the Lasem C API, and keeps the Ruby layer
+focused on input validation, ergonomic entry points, and predictable errors.
 
-This initial project scaffold establishes the gem structure, development
-tooling, and test layout. Native rendering support is added separately.
+The initial API renders MathML, SVG, and Lasem's itex/LaTeX input to SVG, PNG,
+PDF, or PS output:
+
+[source,ruby]
+----
+require "lasem"
+
+svg = Lasem.render_mathml(mathml_string, format: :svg)
+png = Lasem.render_latex("\\sqrt{x}", format: :png, ppi: 72.0)
+----
+
+== Native dependency strategy
+
+The gem looks for Lasem in this order:
+
+1. A vendored Lasem install under `vendor/lasem/install`.
+2. A system Lasem package discovered with `pkg-config`.
+3. A compiled stub extension that raises `Lasem::DependencyError`.
+
+The stub keeps the Ruby API loadable on machines that do not have Lasem yet,
+while making rendering failures explicit.
+
+== Vendored Lasem
+
+Initialize the Lasem submodule under `vendor/lasem/source`, then run:
+
+[source,sh]
+----
+git submodule update --init vendor/lasem/source
+bundle exec rake lasem:doctor
+bundle exec rake lasem:build
+bundle exec rake clean compile
+----
+
+For extra setup hints, run:
+
+[source,sh]
+----
+exe/lasem-doctor --all-warnings
+----
+
+`ext/lasem/extconf.rb` also attempts this vendored Meson build automatically
+when `vendor/lasem/source/meson.build` exists and no Lasem pkg-config package
+has been found yet.
+
+The build task installs Lasem into `vendor/lasem/install`. The extension adds
+that install's `pkgconfig` directories to `PKG_CONFIG_PATH` and embeds the
+vendored library directory as a runtime library path.
+
+If `Lasem.native_available?` is still `false` after `lasem:build`, rebuild the
+extension with `bundle exec rake clean compile` so Ruby stops loading any older
+stub extension.
+
+The vendored Lasem source is LGPL-2.1-or-later. Keep Lasem's license files with
+the vendored source and update this gem when the vendored library is updated.
+
+== System dependencies
+
+Debian or Ubuntu:
+
+[source,sh]
+----
+sudo apt-get install build-essential ruby-dev pkg-config meson ninja-build \
+  bison flex gettext libglib2.0-dev libgdk-pixbuf-2.0-dev libcairo2-dev \
+  libpango1.0-dev libxml2-dev fonts-lyx
+----
+
+Fedora:
+
+[source,sh]
+----
+sudo dnf install gcc ruby-devel pkgconf-pkg-config meson ninja-build \
+  bison flex gettext glib2-devel gdk-pixbuf2-devel cairo-devel pango-devel \
+  libxml2-devel lyx-fonts
+----
+
+Lasem's upstream documentation recommends Computer Modern fonts from the LyX
+font packages: `fonts-lyx` on Debian/Ubuntu and `lyx-fonts` on Fedora.
+
+`exe/lasem-doctor` checks the local toolchain and pkg-config
+dependencies, then prints the best-known install command for the detected
+platform. The package suggestions are guidance; package names can vary by
+distribution release.
 
 == Development
 
@@ -18,3 +100,18 @@ bundle install
 bundle exec rake
 bundle exec rubocop
 ----
+
+Useful environment variables:
+
+`LASEM_PKG_CONFIG`::
+  Override the pkg-config package name, for example `lasem-0.6`.
+
+`LASEM_SOURCE_DIR`::
+  Override the vendored source directory used by `rake lasem:build`.
+
+`LASEM_BUILD_DIR`::
+  Override the Meson build directory used by `rake lasem:build`.
+
+`LASEM_INSTALL_DIR`::
+  Override the install prefix used by `rake lasem:build` and the native
+  extension.

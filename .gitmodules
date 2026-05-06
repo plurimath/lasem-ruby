@@ -1,0 +1,3 @@
+[submodule "vendor/lasem/source"]
+	path = vendor/lasem/source
+	url = https://github.com/LasemProject/lasem.git
