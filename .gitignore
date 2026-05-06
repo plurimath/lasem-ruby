@@ -1,0 +1,15 @@
+/.bundle/
+/.yardoc
+/_yardoc/
+/coverage/
+/doc/
+/lasem-ruby-*.gem
+/pkg/
+/tmp/
+
+/.rspec_status
+/lib/lasem/*.bundle
+/lib/lasem/*.dll
+/lib/lasem/*.so
+/vendor/lasem/build/
+/vendor/lasem/install/

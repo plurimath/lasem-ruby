@@ -1,0 +1,20 @@
+= lasem-ruby
+
+Ruby bindings for the Lasem SVG and MathML rendering library.
+
+== Purpose
+
+`lasem-ruby` is intended to provide a Ruby API for rendering MathML, SVG, and
+Lasem-supported TeX input through the Lasem C library.
+
+This initial project scaffold establishes the gem structure, development
+tooling, and test layout. Native rendering support is added separately.
+
+== Development
+
+[source,sh]
+----
+bundle install
+bundle exec rake
+bundle exec rubocop
+----
