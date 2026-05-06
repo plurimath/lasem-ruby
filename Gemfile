@@ -1,6 +1,6 @@
 source "https://rubygems.org"
 
-# Specify the gem's dependencies in lasem-ruby.gemspec.
+# Specify the gem's dependencies in lasem.gemspec.
 gemspec
 
 gem "irb"
