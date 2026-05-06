@@ -3,19 +3,20 @@
 require_relative "lib/lasem/version"
 
 Gem::Specification.new do |spec|
-  spec.name          = "lasem-ruby"
+  spec.name          = "lasem"
   spec.version       = Lasem::VERSION
   spec.authors       = ["Ribose Inc."]
   spec.email         = ["open.source@ribose.com"]
 
   spec.summary       = "Ruby bindings for the Lasem SVG and MathML renderer."
-  spec.description   = "Ruby bindings for the Lasem SVG and MathML renderer."
+  spec.description   = "Provides a native Ruby extension for rendering " \
+                       "MathML, SVG, and Lasem-supported TeX input through " \
+                       "the Lasem C library."
   spec.homepage      = "https://github.com/plurimath/lasem-ruby"
   spec.license       = "BSD-2-Clause"
 
   spec.required_ruby_version = Gem::Requirement.new(">= 3.2.0")
 
-  spec.metadata["homepage_uri"] = spec.homepage
   spec.metadata["source_code_uri"] = "https://github.com/plurimath/lasem-ruby"
   spec.metadata["rubygems_mfa_required"] = "true"
 
@@ -33,7 +34,7 @@ Gem::Specification.new do |spec|
                    "README.adoc",
                    "Rakefile",
                    "Gemfile",
-                   "lasem-ruby.gemspec",
+                   "lasem.gemspec",
                    ".gitmodules",
                    "exe/*",
                    "lib/**/*.rb",
