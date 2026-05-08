@@ -15,9 +15,12 @@ PDF, or PS output:
 ----
 require "lasem"
 
-svg = Lasem.render_mathml(mathml_string, format: :svg)
-png = Lasem.render_latex("\\sqrt{x}", format: :png, ppi: 72.0)
+svg = Lasem.render(mathml_string, input_type: :mathml, output_format: :svg)
+png = Lasem.render("$\\sqrt{x}$", input_type: :latex, output_format: :png, ppi: 72.0)
 ----
+
+`latex` and `itex` input is passed unchanged to Lasem's itex parser. The gem
+does not infer or add math delimiters.
 
 The source repository is named `lasem-ruby` to make the language binding clear,
 but the gem is named `lasem` because the public Ruby API is already namespaced
@@ -27,8 +30,8 @@ as `Lasem`.
 
 Plurimath image-rendering work originally depended on a `lasem-render`
 executable being available on the user's machine. This gem keeps that dependency
-inside Ruby instead: applications can call `Lasem.render_*` methods and let the
-native extension use Lasem directly.
+inside Ruby instead: applications can call `Lasem.render` and let the native
+extension use Lasem directly.
 
 The `mathematical` gem is the closest prior Ruby example. It wraps Lasem for
 TeX math image output, but its rendering code is coupled to that gem's TeX
@@ -46,7 +49,9 @@ The gem looks for Lasem in this order:
 3. A compiled stub extension that raises `Lasem::DependencyError`.
 
 The stub keeps the Ruby API loadable on machines that do not have Lasem yet,
-while making rendering failures explicit.
+while making rendering failures explicit. If rendering raises
+`Lasem::DependencyError`, run `lasem-doctor --all-warnings` for setup
+diagnostics.
 
 == Vendored Lasem
 
@@ -105,10 +110,9 @@ sudo dnf install gcc ruby-devel pkgconf-pkg-config meson ninja-build \
 Lasem's upstream documentation recommends Computer Modern fonts from the LyX
 font packages: `fonts-lyx` on Debian/Ubuntu and `lyx-fonts` on Fedora.
 
-`exe/lasem-doctor` checks the local toolchain and pkg-config
-dependencies, then prints the best-known install command for the detected
-platform. The package suggestions are guidance; package names can vary by
-distribution release.
+`exe/lasem-doctor` checks the local toolchain and pkg-config dependencies.
+Package names vary by operating system and distribution release, so install
+the matching development packages with the package manager for your platform.
 
 == Development
 

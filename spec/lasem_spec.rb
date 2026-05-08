@@ -9,11 +9,13 @@ RSpec.describe Lasem do
     expect(described_class.native_available?).to be(true).or be(false)
   end
 
-  it "provides convenience render entry points" do
-    expected_methods = %i[
-      render render_mathml render_svg render_latex render_itex
-    ]
+  it "provides the render entry point" do
+    expect(described_class.public_methods).to include(:render)
+  end
 
-    expect(described_class.public_methods).to include(*expected_methods)
+  it "does not expose per-input-type render shortcuts" do
+    shortcuts = %i[render_mathml render_svg render_latex render_itex]
+
+    expect(described_class.public_methods & shortcuts).to be_empty
   end
 end

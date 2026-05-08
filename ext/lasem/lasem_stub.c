@@ -26,8 +26,8 @@ lasem_native_render(int argc, VALUE *argv, VALUE self)
 	VALUE e_dependency_error = lasem_get_or_define_class(m_lasem, "DependencyError", e_error);
 
 	rb_raise(e_dependency_error,
-		 "Lasem native library is not available. Build vendored Lasem with "
-		 "`bundle exec rake lasem:build` or install a system Lasem package.");
+		 "Lasem native library is not available. Run `lasem-doctor --all-warnings` "
+		 "or `bundle exec rake lasem:doctor WARNINGS=all` for setup diagnostics.");
 }
 
 void

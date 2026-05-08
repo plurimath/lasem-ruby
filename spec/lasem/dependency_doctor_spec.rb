@@ -3,15 +3,12 @@
 # rubocop:disable RSpec/ExampleLength, RSpec/MultipleExpectations
 
 require "stringio"
-require "lasem/dependency_doctor"
 
 DependencyDoctorFakeProbe = Struct.new(
   :executables,
   :pkg_config_versions,
   :pkg_config_variables,
   :files,
-  :os_release,
-  :platform,
   keyword_init: true,
 ) do
   def executable?(name)
@@ -58,35 +55,27 @@ RSpec.describe Lasem::DependencyDoctor do
         pkg_config_versions: {},
         pkg_config_variables: {},
         files: [],
-        os_release: {},
-        platform: "x86_64-linux",
       }.merge(overrides),
     )
   end
 
   describe "#report" do
-    it "reports missing dependencies with the best-known installer command" do
+    it "reports missing dependencies" do
       report = described_class.new(
         root: root,
-        probe: probe(executables: %w[apt-get pkg-config],
-                     os_release: { "ID" => "ubuntu" }),
+        probe: probe(executables: %w[pkg-config]),
       ).report
 
       expect(report).not_to be_success
       expect(report.to_s).to include("Missing executables:")
       expect(report.to_s).to include("Missing pkg-config packages:")
-      expect(report.to_s).to include(
-        "Best-known install command for Debian/Ubuntu:",
-      )
-      expect(report.to_s).to include("sudo apt-get install")
     end
 
     it "passes when required dependencies are available" do
       report = described_class.new(
         root: root,
         probe: probe(executables: apt_executables,
-                     pkg_config_versions: all_pkg_config_versions,
-                     os_release: { "ID" => "ubuntu" }),
+                     pkg_config_versions: all_pkg_config_versions),
       ).report
 
       expect(report).to be_success
@@ -104,7 +93,6 @@ RSpec.describe Lasem::DependencyDoctor do
             ["lasem-0.6", "pcfiledir"] => "/usr/lib/pkgconfig",
           },
           files: ["/repo/vendor/lasem/install/lib/pkgconfig/lasem-0.6.pc"],
-          os_release: { "ID" => "ubuntu" },
         ),
       ).report(lasem_conflict_warnings: true)
 
@@ -121,9 +109,6 @@ RSpec.describe Lasem::DependencyDoctor do
       ).report(dep_conflict_warnings: true)
 
       expect(report.to_s).to include("Dependency warnings:")
-      expect(report.to_s).to include(
-        "No supported package installer was detected.",
-      )
       expect(report.to_s).to include("Ruby headers were not found")
     end
   end
