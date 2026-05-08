@@ -9,6 +9,7 @@
 #include <limits.h>
 #include <string.h>
 
+/* Lasem: core DOM and parser APIs used to parse SVG, MathML, and itex input. */
 #include <lsm.h>
 #include <lsmdomparser.h>
 #include <lsmmathmldocument.h>
@@ -70,9 +71,11 @@ static LsmDomDocument *
 lasem_document_from_input(const char *input, gssize input_size, const char *input_type, GError **error)
 {
 	if (strcmp(input_type, "latex") == 0 || strcmp(input_type, "itex") == 0) {
+		/* Lasem: itex parser accepts TeX-like math input and returns a MathML document. */
 		return LSM_DOM_DOCUMENT(lsm_mathml_document_new_from_itex(input, input_size, error));
 	}
 
+	/* Lasem: XML parser accepts SVG or MathML documents from memory. */
 	return lsm_dom_document_new_from_memory(input, input_size, error);
 }
 
@@ -81,18 +84,22 @@ lasem_create_surface(const char *format, VALUE *output, double width_pt, double 
 		     unsigned int width_px, unsigned int height_px)
 {
 	if (strcmp(format, "svg") == 0) {
+		/* Cairo: vector SVG output is streamed into a Ruby string callback. */
 		return cairo_svg_surface_create_for_stream(lasem_write_to_ruby_string, output, width_pt, height_pt);
 	}
 
 	if (strcmp(format, "pdf") == 0) {
+		/* Cairo: vector PDF output is streamed into a Ruby string callback. */
 		return cairo_pdf_surface_create_for_stream(lasem_write_to_ruby_string, output, width_pt, height_pt);
 	}
 
 	if (strcmp(format, "ps") == 0) {
+		/* Cairo: vector PostScript output is streamed into a Ruby string callback. */
 		return cairo_ps_surface_create_for_stream(lasem_write_to_ruby_string, output, width_pt, height_pt);
 	}
 
 	if (strcmp(format, "png") == 0) {
+		/* Cairo: raster PNG output is rendered through an ARGB image surface. */
 		return cairo_image_surface_create(CAIRO_FORMAT_ARGB32, width_px, height_px);
 	}
 
@@ -111,8 +118,11 @@ lasem_native_render(VALUE self, VALUE input_value, VALUE input_type_value, VALUE
 		    VALUE offset_x_value, VALUE offset_y_value)
 {
 	GError *error = NULL;
+	/* Lasem: parsed input document, either XML-backed or generated from itex. */
 	LsmDomDocument *document;
+	/* Lasem: layout/rendering view created from the parsed document. */
 	LsmDomView *view;
+	/* Cairo: target surface and drawing context for the requested output format. */
 	cairo_surface_t *surface;
 	cairo_t *cairo;
 	cairo_status_t status;

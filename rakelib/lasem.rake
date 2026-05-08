@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "fileutils"
-require_relative "../lib/lasem/dependency_doctor"
+require "lasem"
 
 LASEM_RAKE_ROOT = File.expand_path("..", __dir__)
 LASEM_MESON_OPTIONS = %w[
