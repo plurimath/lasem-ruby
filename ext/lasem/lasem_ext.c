@@ -137,6 +137,8 @@ lasem_native_render(VALUE self, VALUE input_value, VALUE input_type_value, VALUE
 	double height_pt;
 	double offset_x;
 	double offset_y;
+	double render_offset_x;
+	double render_offset_y;
 	unsigned int width_px;
 	unsigned int height_px;
 	int explicit_size;
@@ -153,6 +155,8 @@ lasem_native_render(VALUE self, VALUE input_value, VALUE input_type_value, VALUE
 	zoom = NUM2DBL(zoom_value);
 	offset_x = NUM2DBL(offset_x_value);
 	offset_y = NUM2DBL(offset_y_value);
+	render_offset_x = zoom * offset_x;
+	render_offset_y = zoom * offset_y;
 	explicit_size = !NIL_P(width_value) && !NIL_P(height_value);
 
 	document = lasem_document_from_input(input, input_size, input_type, &error);
@@ -174,8 +178,8 @@ lasem_native_render(VALUE self, VALUE input_value, VALUE input_type_value, VALUE
 	lsm_dom_view_get_size_pixels(view, &width_px, &height_px, NULL);
 
 	if (explicit_size) {
-		width_pt = NUM2DBL(width_value);
-		height_pt = NUM2DBL(height_value);
+		width_pt = zoom * NUM2DBL(width_value);
+		height_pt = zoom * NUM2DBL(height_value);
 		width_px = lasem_positive_pixel_size(width_pt, "width");
 		height_px = lasem_positive_pixel_size(height_pt, "height");
 	} else {
@@ -199,7 +203,7 @@ lasem_native_render(VALUE self, VALUE input_value, VALUE input_type_value, VALUE
 
 	cairo = cairo_create(surface);
 	cairo_scale(cairo, zoom, zoom);
-	lsm_dom_view_render(view, cairo, -offset_x, -offset_y);
+	lsm_dom_view_render(view, cairo, -render_offset_x, -render_offset_y);
 
 	status = cairo_status(cairo);
 	if (status != CAIRO_STATUS_SUCCESS) {

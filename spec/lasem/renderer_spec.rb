@@ -15,6 +15,33 @@ RSpec.describe Lasem::Renderer do
     described_class.render(mathml, input_type: :mathml, output_format: :svg)
   end
 
+  def render_svg(**options)
+    described_class.render(
+      mathml,
+      input_type: :mathml,
+      output_format: :svg,
+      **options,
+    )
+  end
+
+  def first_use_coordinates(svg)
+    match = svg.match(/<use\b[^>]*\sx="([^"]+)"[^>]*\sy="([^"]+)"/)
+    raise "No SVG use element found" unless match
+
+    [Float(match[1]), Float(match[2])]
+  end
+
+  def native_offset_deltas(**options)
+    base_x, base_y = first_use_coordinates(render_svg(zoom: 2.0))
+    offset_x, offset_y = first_use_coordinates(render_svg(zoom: 2.0, **options))
+
+    [base_x - offset_x, base_y - offset_y]
+  end
+
+  def skip_without_native_lasem
+    skip "Lasem native library is not available" unless Lasem.native_available?
+  end
+
   def stub_native_render
     allow(Lasem::NativeLoader).to receive(:render).and_return("<svg/>")
   end
@@ -79,11 +106,24 @@ RSpec.describe Lasem::Renderer do
     end
 
     it "renders SVG output when the native layer is available" do
-      unless Lasem.native_available?
-        skip "Lasem native library is not available"
-      end
+      skip_without_native_lasem
 
       expect(render_mathml).to include("<svg")
+    end
+
+    it "scales explicit export dimensions by zoom" do
+      skip_without_native_lasem
+
+      expect(render_svg(width: 10, height: 20, zoom: 2.0)).to include(
+        'width="20" height="40" viewBox="0 0 20 40"',
+      )
+    end
+
+    it "applies offsets with upstream zoom scaling" do
+      skip_without_native_lasem
+
+      expect(native_offset_deltas(offset_x: 1.0, offset_y: 1.0))
+        .to all(be_within(0.001).of(4.0))
     end
 
     it "raises a dependency error when the native layer is unavailable" do
