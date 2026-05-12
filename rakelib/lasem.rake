@@ -10,6 +10,11 @@ LASEM_MESON_OPTIONS = %w[
   -Dintrospection=disabled
   -Dviewer=disabled
 ].freeze
+LASEM_COMPILER_EXECUTABLES = %w[
+  cc
+  gcc
+  clang
+].freeze
 LASEM_BUILD_EXECUTABLES = %w[
   meson
   pkg-config
@@ -36,6 +41,9 @@ end
 def lasem_missing_executables
   missing = LASEM_BUILD_EXECUTABLES.reject do |executable|
     lasem_executable?(executable)
+  end
+  unless LASEM_COMPILER_EXECUTABLES.any? { |executable| lasem_executable?(executable) }
+    missing << "C compiler (cc, gcc, or clang)"
   end
   missing << "ninja or ninja-build" unless lasem_ninja?
   missing

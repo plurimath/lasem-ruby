@@ -4,31 +4,35 @@
 
 require "stringio"
 
-DependencyDoctorFakeProbe = Struct.new(
-  :executables,
-  :pkg_config_versions,
-  :pkg_config_variables,
-  :files,
-  keyword_init: true,
-) do
-  def executable?(name)
-    executables.include?(name)
-  end
-
-  def file?(path)
-    files.include?(path)
-  end
-
-  def pkg_config_version(package)
-    pkg_config_versions[package]
-  end
-
-  def pkg_config_variable(package, variable)
-    pkg_config_variables[[package, variable]]
-  end
-end
-
 RSpec.describe Lasem::DependencyDoctor do
+  let(:fake_probe_class) do
+    Struct.new(
+      :executables,
+      :pkg_config_versions,
+      :pkg_config_variables,
+      :files,
+      :os_release,
+      :platform,
+      keyword_init: true,
+    ) do
+      def executable?(name)
+        executables.include?(name)
+      end
+
+      def file?(path)
+        files.include?(path)
+      end
+
+      def pkg_config_version(package)
+        pkg_config_versions[package]
+      end
+
+      def pkg_config_variable(package, variable)
+        pkg_config_variables[[package, variable]]
+      end
+    end
+  end
+
   let(:root) { "/repo" }
   let(:required_executables) do
     %w[cc make pkg-config meson ninja bison flex msgfmt]
@@ -49,7 +53,7 @@ RSpec.describe Lasem::DependencyDoctor do
   end
 
   def probe(**overrides)
-    DependencyDoctorFakeProbe.new(
+    fake_probe_class.new(
       {
         executables: [],
         pkg_config_versions: {},

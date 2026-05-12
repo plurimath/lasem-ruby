@@ -5,8 +5,8 @@ module Lasem
     INPUT_TYPES = %w[xml mathml svg latex itex].freeze
     OUTPUT_FORMATS = %w[svg png pdf ps].freeze
     DEFAULT_OPTIONS = {
-      input_type: :xml,
-      output_format: :svg,
+      input: :xml,
+      output: :svg,
       ppi: 72.0,
       zoom: 1.0,
       width: nil,
@@ -53,14 +53,14 @@ module Lasem
 
     def normalize_format_options(options)
       @input_type = choice(
-        options.fetch(:input_type),
+        options.fetch(:input),
         INPUT_TYPES,
-        "input_type",
+        "input",
       )
       @output_format = choice(
-        options.fetch(:output_format),
+        options.fetch(:output),
         OUTPUT_FORMATS,
-        "output_format",
+        "output",
       )
     end
 
@@ -72,8 +72,8 @@ module Lasem
     end
 
     def normalize_position_options(options)
-      @offset_x = numeric(options.fetch(:offset_x), "offset_x")
-      @offset_y = numeric(options.fetch(:offset_y), "offset_y")
+      @offset_x = finite_numeric(options.fetch(:offset_x), "offset_x")
+      @offset_y = finite_numeric(options.fetch(:offset_y), "offset_y")
     end
 
     def choice(value, allowed_values, name)
@@ -92,9 +92,16 @@ module Lasem
       raise OptionError.not_numeric(name: name)
     end
 
-    def positive_float(value, name)
+    def finite_numeric(value, name)
       number = numeric(value, name)
-      return number if number.positive? && number.finite?
+      return number if number.finite?
+
+      raise OptionError.not_finite(name: name)
+    end
+
+    def positive_float(value, name)
+      number = finite_numeric(value, name)
+      return number if number.positive?
 
       raise OptionError.not_positive(name: name)
     end
