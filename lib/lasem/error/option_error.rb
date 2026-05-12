@@ -1,7 +1,15 @@
 # frozen_string_literal: true
 
 module Lasem
-  class OptionError < Error
+  class OptionError < ArgumentError
+    def self.unknown_options(names:)
+      new("unknown option(s): #{names.join(', ')}")
+    end
+
+    def self.non_empty_source
+      new("source must be a non-empty string")
+    end
+
     def self.invalid_choice(name:, allowed_values:)
       new("#{name} must be one of: #{allowed_values.join(', ')}")
     end
@@ -10,16 +18,16 @@ module Lasem
       new("#{name} must be numeric")
     end
 
+    def self.not_finite(name:)
+      new("#{name} must be finite")
+    end
+
     def self.not_positive(name:)
       new("#{name} must be greater than 0")
     end
 
     def self.incomplete_size_pair
       new("width and height must be provided together")
-    end
-
-    def self.unknown_options(names:)
-      new("unknown option(s): #{names.join(', ')}")
     end
   end
 end

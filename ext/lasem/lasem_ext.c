@@ -16,8 +16,6 @@
 
 static VALUE m_lasem;
 static VALUE m_native;
-static VALUE e_error;
-static VALUE e_dependency_error;
 static VALUE e_render_error;
 
 static VALUE
@@ -53,18 +51,43 @@ lasem_write_to_ruby_string(void *closure, const unsigned char *data, unsigned in
 	return CAIRO_STATUS_SUCCESS;
 }
 
-static unsigned int
-lasem_positive_pixel_size(double value, const char *name)
+static int
+lasem_positive_pixel_size(double value, unsigned int *size, const char **message)
 {
 	if (!isfinite(value) || value <= 0.0) {
-		rb_raise(e_render_error, "%s must be greater than 0", name);
+		*message = "must be greater than 0";
+		return 0;
 	}
 
 	if (value > UINT_MAX) {
-		rb_raise(e_render_error, "%s is too large", name);
+		*message = "is too large";
+		return 0;
 	}
 
-	return (unsigned int) ceil(value);
+	*size = (unsigned int) ceil(value);
+	return 1;
+}
+
+static unsigned int
+lasem_checked_positive_pixel_size(double value, const char *name)
+{
+	unsigned int size;
+	const char *message;
+
+	if (!lasem_positive_pixel_size(value, &size, &message)) {
+		rb_raise(e_render_error, "%s %s", name, message);
+	}
+
+	return size;
+}
+
+static int
+lasem_supported_output_format(const char *format)
+{
+	return strcmp(format, "svg") == 0 ||
+	       strcmp(format, "pdf") == 0 ||
+	       strcmp(format, "ps") == 0 ||
+	       strcmp(format, "png") == 0;
 }
 
 static LsmDomDocument *
@@ -103,7 +126,7 @@ lasem_create_surface(const char *format, VALUE *output, double width_pt, double 
 		return cairo_image_surface_create(CAIRO_FORMAT_ARGB32, width_px, height_px);
 	}
 
-	rb_raise(e_render_error, "unsupported output format: %s", format);
+	return NULL;
 }
 
 static VALUE
@@ -142,6 +165,7 @@ lasem_native_render(VALUE self, VALUE input_value, VALUE input_type_value, VALUE
 	unsigned int width_px;
 	unsigned int height_px;
 	int explicit_size;
+	const char *pixel_size_error;
 
 	StringValue(input_value);
 	StringValue(input_type_value);
@@ -158,6 +182,15 @@ lasem_native_render(VALUE self, VALUE input_value, VALUE input_type_value, VALUE
 	render_offset_x = zoom * offset_x;
 	render_offset_y = zoom * offset_y;
 	explicit_size = !NIL_P(width_value) && !NIL_P(height_value);
+	if (!lasem_supported_output_format(format)) {
+		rb_raise(e_render_error, "unsupported output format: %s", format);
+	}
+	if (explicit_size) {
+		width_pt = zoom * NUM2DBL(width_value);
+		height_pt = zoom * NUM2DBL(height_value);
+		width_px = lasem_checked_positive_pixel_size(width_pt, "width");
+		height_px = lasem_checked_positive_pixel_size(height_pt, "height");
+	}
 
 	document = lasem_document_from_input(input, input_size, input_type, &error);
 	if (document == NULL) {
@@ -172,29 +205,37 @@ lasem_native_render(VALUE self, VALUE input_value, VALUE input_type_value, VALUE
 
 	lsm_dom_view_set_resolution(view, ppi);
 
-	width_pt = 2.0;
-	height_pt = 2.0;
-	lsm_dom_view_get_size(view, &width_pt, &height_pt, NULL);
-	lsm_dom_view_get_size_pixels(view, &width_px, &height_px, NULL);
-
-	if (explicit_size) {
-		width_pt = zoom * NUM2DBL(width_value);
-		height_pt = zoom * NUM2DBL(height_value);
-		width_px = lasem_positive_pixel_size(width_pt, "width");
-		height_px = lasem_positive_pixel_size(height_pt, "height");
-	} else {
+	if (!explicit_size) {
+		width_pt = 2.0;
+		height_pt = 2.0;
+		lsm_dom_view_get_size(view, &width_pt, &height_pt, NULL);
+		lsm_dom_view_get_size_pixels(view, &width_px, &height_px, NULL);
 		width_pt *= zoom;
 		height_pt *= zoom;
-		width_px = lasem_positive_pixel_size((double) width_px * zoom, "width");
-		height_px = lasem_positive_pixel_size((double) height_px * zoom, "height");
+		if (!lasem_positive_pixel_size((double) width_px * zoom, &width_px, &pixel_size_error)) {
+			g_object_unref(view);
+			g_object_unref(document);
+			rb_raise(e_render_error, "width %s", pixel_size_error);
+		}
+		if (!lasem_positive_pixel_size((double) height_px * zoom, &height_px, &pixel_size_error)) {
+			g_object_unref(view);
+			g_object_unref(document);
+			rb_raise(e_render_error, "height %s", pixel_size_error);
+		}
 	}
 
 	output = rb_str_new(NULL, 0);
 	rb_enc_associate_index(output, rb_ascii8bit_encindex());
 
 	surface = lasem_create_surface(format, &output, width_pt, height_pt, width_px, height_px);
+	if (surface == NULL) {
+		g_object_unref(view);
+		g_object_unref(document);
+		rb_raise(e_render_error, "unsupported output format: %s", format);
+	}
 	status = cairo_surface_status(surface);
 	if (status != CAIRO_STATUS_SUCCESS) {
+		cairo_surface_destroy(surface);
 		g_object_unref(view);
 		g_object_unref(document);
 		rb_raise(e_render_error, "Cairo could not create a rendering surface: %s",
@@ -245,10 +286,12 @@ lasem_native_render(VALUE self, VALUE input_value, VALUE input_type_value, VALUE
 void
 Init_lasem(void)
 {
+	VALUE e_error;
+
 	m_lasem = rb_define_module("Lasem");
 	m_native = rb_define_module_under(m_lasem, "Native");
 	e_error = lasem_get_or_define_class(m_lasem, "Error", rb_eStandardError);
-	e_dependency_error = lasem_get_or_define_class(m_lasem, "DependencyError", e_error);
+	lasem_get_or_define_class(m_lasem, "DependencyError", e_error);
 	e_render_error = lasem_get_or_define_class(m_lasem, "RenderError", e_error);
 
 	rb_define_singleton_method(m_native, "native_available?", lasem_native_available, 0);

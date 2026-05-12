@@ -15,12 +15,15 @@ PDF, or PS output:
 ----
 require "lasem"
 
-svg = Lasem.render(mathml_string, input_type: :mathml, output_format: :svg)
-png = Lasem.render("$\\sqrt{x}$", input_type: :latex, output_format: :png, ppi: 72.0)
+svg = Lasem.render(mathml_string, input: :mathml, output: :svg)
+png = Lasem.render("$\\sqrt{x}$", input: :latex, output: :png, ppi: 72.0)
 ----
 
 `latex` and `itex` input is passed unchanged to Lasem's itex parser. The gem
 does not infer or add math delimiters.
+
+Supported input values are `:xml`, `:mathml`, `:svg`, `:latex`, and `:itex`.
+Supported output values are `:svg`, `:png`, `:pdf`, and `:ps`.
 
 The source repository is named `lasem-ruby` to make the language binding clear,
 but the gem is named `lasem` because the public Ruby API is already namespaced
@@ -42,10 +45,14 @@ repository.
 
 == Native dependency strategy
 
+The released gem does not package or build the upstream Lasem C library. Install
+Lasem before installing this gem when possible, so the native extension can link
+to it during installation.
+
 The gem looks for Lasem in this order:
 
-1. A vendored Lasem install under `vendor/lasem/install`.
-2. A system Lasem package discovered with `pkg-config`.
+1. A system Lasem package discovered with `pkg-config`.
+2. A source-checkout vendored Lasem install under `vendor/lasem/install`.
 3. A compiled stub extension that raises `Lasem::DependencyError`.
 
 The stub keeps the Ruby API loadable on machines that do not have Lasem yet,
@@ -53,9 +60,45 @@ while making rendering failures explicit. If rendering raises
 `Lasem::DependencyError`, run `lasem-doctor --all-warnings` for setup
 diagnostics.
 
+== Rebuilding after installing Lasem
+
+If the gem was installed before Lasem was available, Ruby may have compiled the
+fallback stub extension. After installing Lasem, rebuild the native extension so
+the gem links against the real Lasem library.
+
+For an installed gem:
+
+[source,sh]
+----
+gem pristine lasem --extensions
+----
+
+When using Bundler:
+
+[source,sh]
+----
+bundle pristine lasem
+----
+
+For a source checkout:
+
+[source,sh]
+----
+bundle exec rake clean compile
+----
+
+Then verify the native extension is available:
+
+[source,sh]
+----
+ruby -rlasem -e 'p Lasem.native_available?'
+----
+
 == Vendored Lasem
 
-Initialize the Lasem submodule under `vendor/lasem/source`, then run:
+The vendored build tasks are development helpers for source checkouts. They are
+not part of normal gem installation. Initialize the Lasem submodule under
+`vendor/lasem/source`, then run:
 
 [source,sh]
 ----
@@ -71,10 +114,6 @@ For extra setup hints, run:
 ----
 exe/lasem-doctor --all-warnings
 ----
-
-`ext/lasem/extconf.rb` also attempts this vendored Meson build automatically
-when `vendor/lasem/source/meson.build` exists and no Lasem pkg-config package
-has been found yet.
 
 The build task installs Lasem into `vendor/lasem/install`. The extension adds
 that install's `pkgconfig` directories to `PKG_CONFIG_PATH` and embeds the
@@ -115,6 +154,8 @@ Package names vary by operating system and distribution release, so install
 the matching development packages with the package manager for your platform.
 
 == Development
+
+Ruby 3.2 or newer is required.
 
 [source,sh]
 ----

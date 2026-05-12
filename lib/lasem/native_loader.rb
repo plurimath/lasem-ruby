@@ -11,7 +11,7 @@ module Lasem
 
     def available?
       load
-      defined?(Native) && Native.native_available?
+      !!(defined?(Native) && Native.native_available?)
     rescue DependencyError
       false
     end

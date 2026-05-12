@@ -22,35 +22,16 @@ Gem::Specification.new do |spec|
     "source_code_uri" => spec.homepage,
   }
 
-  spec.files = Dir.chdir(__dir__) do
-    `git ls-files -z --recurse-submodules`.split("\x0")
-      .grep(%r{
-        \A(?:
-          LICENSE\.txt
-          | README\.adoc
-          | lasem\.gemspec
-          | exe/[^/]+
-          | ext/lasem/[^/]+\.(?:c|rb)
-          | lib/.+\.rb
-          | vendor/lasem/source/
-            (?:
-              COPYING
-              | NEWS\.md
-              | README\.md
-              | TODO
-              | lasem\.doap
-              | lasem\.svg
-              | meson\.build
-              | meson_options\.txt
-              | org\.lasem\.Viewer\.json
-              | (?:itex2mml|po|src|subprojects|tests|viewer)/[^./][^/]*
-            )
-        )\z
-      }x)
-      .sort
+  # Specify which files should be added to the gem when it is released.
+  # The `git ls-files -z` loads files that have been added to git.
+  spec.files = Dir.chdir(File.expand_path(__dir__)) do
+    `git ls-files -z`.split("\x0").reject do |f|
+      f.match(%r{^(test|spec|features|vendor)/})
+    end
   end
-  spec.bindir = "exe"
-  spec.executables = spec.files.grep(%r{\Aexe/}) { |f| File.basename(f) }
-  spec.extensions = ["ext/lasem/extconf.rb"]
+
+  spec.bindir        = "exe"
+  spec.executables   = spec.files.grep(%r{^exe/}) { |f| File.basename(f) }
+  spec.extensions    = ["ext/lasem/extconf.rb"]
   spec.require_paths = ["lib"]
 end

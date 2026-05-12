@@ -4,7 +4,7 @@ RSpec.describe Lasem::OptionError do
   describe ".invalid_choice" do
     subject(:error) do
       described_class.invalid_choice(
-        name: "output_format",
+        name: "output",
         allowed_values: %w[svg png],
       )
     end
@@ -12,7 +12,18 @@ RSpec.describe Lasem::OptionError do
     it "builds an invalid choice error" do
       expect(error).to have_attributes(
         class: described_class,
-        message: "output_format must be one of: svg, png",
+        message: "output must be one of: svg, png",
+      )
+    end
+  end
+
+  describe ".non_empty_source" do
+    it "builds a source validation error" do
+      error = described_class.non_empty_source
+
+      expect(error).to have_attributes(
+        class: described_class,
+        message: "source must be a non-empty string",
       )
     end
   end
@@ -24,6 +35,17 @@ RSpec.describe Lasem::OptionError do
       expect(error).to have_attributes(
         class: described_class,
         message: "ppi must be numeric",
+      )
+    end
+  end
+
+  describe ".not_finite" do
+    it "builds a finite number error" do
+      error = described_class.not_finite(name: "offset_x")
+
+      expect(error).to have_attributes(
+        class: described_class,
+        message: "offset_x must be finite",
       )
     end
   end
