@@ -111,7 +111,10 @@ module Lasem
     end
 
     def stale_extension_warning
-      extension = File.join(root, "lib/lasem/lasem.so")
+      extension = File.join(
+        root,
+        "lib/lasem/lasem.#{RbConfig::CONFIG.fetch('DLEXT')}",
+      )
       return unless probe.file?(vendored_pc) && !probe.file?(extension)
 
       "Vendored Lasem is installed, but the native extension is missing; run " \
