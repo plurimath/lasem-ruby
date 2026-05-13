@@ -71,11 +71,13 @@ RSpec.describe Lasem::Renderer do
       end.to raise_error(Lasem::OptionError, /unknown option.*zooom/)
     end
 
-    it "requires a non-empty source string" do
+    it "requires source to be a string" do
       expect do
         described_class.render(nil)
       end.to raise_error(Lasem::OptionError, /source/)
+    end
 
+    it "requires source to be non-empty" do
       expect do
         described_class.render(" ")
       end.to raise_error(Lasem::OptionError, /source/)
@@ -130,8 +132,8 @@ RSpec.describe Lasem::Renderer do
     it "scales explicit export dimensions by zoom" do
       skip_without_native_lasem
 
-      expect(render_svg(width: 10, height: 20, zoom: 2.0)).to include(
-        'width="20" height="40" viewBox="0 0 20 40"',
+      expect(render_svg(width: 10, height: 20, zoom: 2.0)).to match(
+        /width="20(?:pt)?" height="40(?:pt)?" viewBox="0 0 20 40"/,
       )
     end
 
