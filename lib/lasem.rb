@@ -15,12 +15,12 @@ module Lasem
     NativeLoader.available?
   end
 
-  def self.render(source, input: :xml, output: :svg, **options)
+  def self.render(source, input: :xml, output: :svg, **)
     Renderer.render(
       source,
       input: input,
       output: output,
-      **options,
+      **,
     )
   end
 end

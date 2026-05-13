@@ -42,9 +42,10 @@ def lasem_missing_executables
   missing = LASEM_BUILD_EXECUTABLES.reject do |executable|
     lasem_executable?(executable)
   end
-  unless LASEM_COMPILER_EXECUTABLES.any? { |executable| lasem_executable?(executable) }
-    missing << "C compiler (cc, gcc, or clang)"
+  has_compiler = LASEM_COMPILER_EXECUTABLES.any? do |executable|
+    lasem_executable?(executable)
   end
+  missing << "C compiler (cc, gcc, or clang)" unless has_compiler
   missing << "ninja or ninja-build" unless lasem_ninja?
   missing
 end
