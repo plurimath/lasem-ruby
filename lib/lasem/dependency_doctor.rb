@@ -41,6 +41,7 @@ module Lasem
       PkgConfigDependency.new(name: "pangocairo", requirement: ">= 1.16.0"),
       PkgConfigDependency.new(name: "libxml-2.0"),
     ].freeze
+    LASEM_PKG_CONFIG_CANDIDATES = %w[lasem-0.6 lasem lasem-0.4].freeze
 
     def initialize(root: ROOT, probe: Probe.new)
       @root = root
@@ -122,13 +123,28 @@ module Lasem
     end
 
     def pkg_config_precedence_warning
-      resolved_pc_dir = probe.pkg_config_variable("lasem-0.6", "pcfiledir")
       return unless probe.file?(vendored_pc)
+
+      resolved_package, resolved_pc_dir = resolved_lasem_pkg_config
       return if resolved_pc_dir.nil?
       return if File.expand_path(resolved_pc_dir) == vendored_pc_dir
 
-      "`pkg-config lasem-0.6` resolves to #{resolved_pc_dir}, while vendored " \
-        "Lasem is installed at #{vendored_pc_dir}."
+      "`pkg-config #{resolved_package}` resolves to #{resolved_pc_dir}, " \
+        "while vendored Lasem is installed at #{vendored_pc_dir}."
+    end
+
+    def resolved_lasem_pkg_config
+      lasem_pkg_config_candidates.filter_map do |package|
+        pc_dir = probe.pkg_config_variable(package, "pcfiledir")
+        [package, pc_dir] unless pc_dir.nil?
+      end.first
+    end
+
+    def lasem_pkg_config_candidates
+      override = ENV.fetch("LASEM_PKG_CONFIG", nil)
+      return [override] if override && !override.empty?
+
+      LASEM_PKG_CONFIG_CANDIDATES
     end
 
     def dependency_warnings(enabled)

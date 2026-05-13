@@ -63,6 +63,22 @@ RSpec.describe Lasem::DependencyDoctor do
     )
   end
 
+  def with_lasem_pkg_config(value)
+    original = ENV.fetch("LASEM_PKG_CONFIG", nil)
+    if value.nil?
+      ENV.delete("LASEM_PKG_CONFIG")
+    else
+      ENV["LASEM_PKG_CONFIG"] = value
+    end
+    yield
+  ensure
+    if original.nil?
+      ENV.delete("LASEM_PKG_CONFIG")
+    else
+      ENV["LASEM_PKG_CONFIG"] = original
+    end
+  end
+
   describe "#report" do
     it "reports missing dependencies" do
       report = described_class.new(
@@ -103,6 +119,46 @@ RSpec.describe Lasem::DependencyDoctor do
       expect(report.to_s).to include("Lasem setup warnings:")
       expect(report.to_s).to include("run `bundle exec rake clean compile`")
       expect(report.to_s).to include(vendored_pc_dir)
+    end
+
+    it "uses the first resolved Lasem pkg-config candidate in setup warnings" do
+      vendored_pc_dir = "/repo/vendor/lasem/install/lib/pkgconfig"
+      report = with_lasem_pkg_config(nil) do
+        described_class.new(
+          root: root,
+          probe: probe(
+            executables: apt_executables,
+            pkg_config_versions: all_pkg_config_versions,
+            pkg_config_variables: {
+              ["lasem", "pcfiledir"] => "/usr/lib/pkgconfig",
+            },
+            files: ["/repo/vendor/lasem/install/lib/pkgconfig/lasem-0.6.pc"],
+          ),
+        ).report(lasem_conflict_warnings: true)
+      end
+
+      expect(report.to_s).to include("`pkg-config lasem` resolves")
+      expect(report.to_s).to include(vendored_pc_dir)
+    end
+
+    it "uses LASEM_PKG_CONFIG in setup warnings" do
+      report = with_lasem_pkg_config("lasem") do
+        described_class.new(
+          root: root,
+          probe: probe(
+            executables: apt_executables,
+            pkg_config_versions: all_pkg_config_versions,
+            pkg_config_variables: {
+              ["lasem", "pcfiledir"] => "/usr/lib/pkgconfig",
+              ["lasem-0.6", "pcfiledir"] => "/other/pkgconfig",
+            },
+            files: ["/repo/vendor/lasem/install/lib/pkgconfig/lasem-0.6.pc"],
+          ),
+        ).report(lasem_conflict_warnings: true)
+      end
+
+      expect(report.to_s).to include("`pkg-config lasem` resolves")
+      expect(report.to_s).not_to include("`pkg-config lasem-0.6` resolves")
     end
 
     it "can include dependency warnings" do

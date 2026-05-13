@@ -1,79 +1,261 @@
-= lasem
+= Lasem: Ruby bindings for the Lasem MathML and SVG renderer
 
-Ruby bindings for the Lasem SVG and MathML rendering library.
+image:https://img.shields.io/gem/v/lasem.svg[Gem Version, link=https://rubygems.org/gems/lasem]
+image:https://img.shields.io/github/license/plurimath/lasem-ruby.svg[License]
+
+image::docs/images/hero_quadratic.png[Quadratic formula rendered with Lasem]
+
 
 == Purpose
 
-`lasem` is a thin native wrapper around Lasem. It delegates parsing, layout,
-and rendering behavior to the Lasem C API, and keeps the Ruby layer focused on
-input validation, ergonomic entry points, and predictable errors.
+`lasem` is a Ruby native extension that wraps the
+https://wiki.gnome.org/Projects/Lasem[Lasem] C library to render mathematical
+notation and SVG. It parses MathML, SVG, or Lasem-supported itex/LaTeX input
+and emits SVG, PNG, PDF, or PostScript through Lasem's existing layout
+pipeline.
 
-The initial API renders MathML, SVG, and Lasem's itex/LaTeX input to SVG, PNG,
-PDF, or PS output:
+The gem keeps the Ruby layer focused on input validation, ergonomic entry
+points, and predictable errors. Parsing, layout, and rendering are delegated
+to Lasem.
+
+`lasem` is intended for Ruby applications that need an embeddable interface to
+Lasem-supported rendering without shelling out to the `lasem-render`
+executable.
+
+The source repository is named `lasem-ruby` to make the language binding
+clear; the gem itself is named `lasem` because the public Ruby API is already
+namespaced as `Lasem`.
+
+
+== Prerequisites
+
+`lasem` is a native extension. Ruby 3.2 or newer is required, and the upstream
+Lasem C library must be available for rendering support.
+
+The released gem does not package or build the upstream Lasem C library. If
+Lasem is missing when the gem is installed, installation can still succeed with
+a stub extension, but `Lasem.render` raises `Lasem::DependencyError` until
+Lasem is installed and the extension is rebuilt.
+
+Install your operating system's Lasem development package when one is
+available. The package lists below cover the Ruby native extension toolchain,
+the vendored Lasem source-checkout build, and fonts commonly needed for math
+rendering.
+
+=== Debian or Ubuntu
+
+[source,sh]
+----
+sudo apt-get install build-essential ruby-dev pkg-config meson ninja-build \
+  bison flex gettext libglib2.0-dev libgdk-pixbuf-2.0-dev libcairo2-dev \
+  libpango1.0-dev libxml2-dev fonts-lyx
+----
+
+=== Fedora
+
+[source,sh]
+----
+sudo dnf install gcc ruby-devel pkgconf-pkg-config meson ninja-build \
+  bison flex gettext glib2-devel gdk-pixbuf2-devel cairo-devel pango-devel \
+  libxml2-devel lyx-fonts
+----
+
+Run `lasem-doctor --all-warnings` after installation if rendering is
+unavailable or the gem reports missing native dependencies.
+
+
+== Installation
+
+Add to your application's Gemfile:
+
+[source,ruby]
+----
+gem "lasem"
+----
+
+Then:
+
+[source,sh]
+----
+bundle install
+----
+
+Or install directly:
+
+[source,sh]
+----
+gem install lasem
+----
+
+Lasem itself is a native C library and is not bundled with the gem. See
+<<prerequisites,Prerequisites>> before installing the gem.
+
+
+== Quick start
 
 [source,ruby]
 ----
 require "lasem"
 
-svg = Lasem.render(mathml_string, input: :mathml, output: :svg)
-png = Lasem.render("$\\sqrt{x}$", input: :latex, output: :png, ppi: 72.0)
+png = Lasem.render(
+  "$x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}$",
+  input: :latex,
+  output: :png,
+  ppi: 192.0,
+)
+
+File.binwrite("quadratic.png", png)
 ----
 
-`latex` and `itex` input is passed unchanged to Lasem's itex parser. The gem
-does not infer or add math delimiters.
+Output:
 
-Supported input values are `:xml`, `:mathml`, `:svg`, `:latex`, and `:itex`.
-Supported output values are `:svg`, `:png`, `:pdf`, and `:ps`.
+image::docs/images/hero_quadratic.png[Quadratic formula]
 
-The source repository is named `lasem-ruby` to make the language binding clear,
-but the gem is named `lasem` because the public Ruby API is already namespaced
-as `Lasem`.
 
-== Background
+== Usage
 
-Plurimath image-rendering work originally depended on a `lasem-render`
-executable being available on the user's machine. This gem keeps that dependency
-inside Ruby instead: applications can call `Lasem.render` and let the native
-extension use Lasem directly.
+=== `Lasem.render`
 
-The `mathematical` gem is the closest prior Ruby example. It wraps Lasem for
-TeX math image output, but its rendering code is coupled to that gem's TeX
-parser, API shape, and packaging. This project uses the same underlying Lasem
-and Cairo idea while keeping the wrapper focused on Lasem itself, so Plurimath
-can depend on it without mixing native rendering code into the main Plurimath
-repository.
+[source,ruby]
+----
+Lasem.render(source, input: :xml, output: :svg, **options) # => String
+----
 
-== Native dependency strategy
+Returns the rendered output as a binary string in the requested format.
 
-The released gem does not package or build the upstream Lasem C library. Install
-Lasem before installing this gem when possible, so the native extension can link
-to it during installation.
+==== Options
+
+`input`::
+  Source language. One of `:xml`, `:mathml`, `:svg`, `:latex`, `:itex`.
+  Default `:xml`. `:latex` and `:itex` are passed unchanged to Lasem's itex
+  parser; the gem does not infer or add math delimiters.
+
+`output`::
+  Target format. One of `:svg`, `:png`, `:pdf`, `:ps`. Default `:svg`.
+
+`ppi`::
+  Pixels per inch used for rasterized output. Positive float. Default `72.0`.
+
+`zoom`::
+  Render scale factor. Positive float. Default `1.0`.
+
+`width`, `height`::
+  Optional fixed output dimensions in user units. Must be supplied together.
+  Default `nil` (use Lasem's natural size).
+
+`offset_x`, `offset_y`::
+  Optional translation in user units. Default `0.0`.
+
+=== `Lasem.native_available?`
+
+Returns `true` when the native extension is linked against a usable Lasem
+build. Returns `false` when only the stub fallback is loaded; in that case
+`Lasem.render` raises `Lasem::DependencyError`.
+
+
+== Examples
+
+.LaTeX → PNG (Basel problem)
+[example]
+====
+[source,ruby]
+----
+Lasem.render(
+  "$\\sum_{n=1}^{\\infty} \\frac{1}{n^2} = \\frac{\\pi^2}{6}$",
+  input: :latex,
+  output: :png,
+  ppi: 192.0,
+)
+----
+
+image::docs/images/latex_euler.png[Basel problem rendered to PNG]
+====
+
+
+.LaTeX → PNG (Gaussian integral)
+[example]
+====
+[source,ruby]
+----
+Lasem.render(
+  "$\\int_{0}^{\\infty} e^{-x^2}\\,dx = \\frac{\\sqrt{\\pi}}{2}$",
+  input: :latex,
+  output: :png,
+  ppi: 192.0,
+)
+----
+
+image::docs/images/latex_integral.png[Gaussian integral rendered to PNG]
+====
+
+
+.MathML → PNG (3×3 matrix)
+[example]
+====
+[source,ruby]
+----
+mathml = <<~XML
+  <math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+    <mrow>
+      <mi>A</mi>
+      <mo>=</mo>
+      <mfenced open="[" close="]">
+        <mtable>
+          <mtr><mtd><mn>1</mn></mtd><mtd><mn>2</mn></mtd><mtd><mn>3</mn></mtd></mtr>
+          <mtr><mtd><mn>4</mn></mtd><mtd><mn>5</mn></mtd><mtd><mn>6</mn></mtd></mtr>
+          <mtr><mtd><mn>7</mn></mtd><mtd><mn>8</mn></mtd><mtd><mn>9</mn></mtd></mtr>
+        </mtable>
+      </mfenced>
+    </mrow>
+  </math>
+XML
+
+Lasem.render(mathml, input: :mathml, output: :png, ppi: 192.0)
+----
+
+image::docs/images/mathml_matrix.png[3x3 matrix rendered from MathML]
+====
+
+
+.MathML → SVG
+[example]
+====
+[source,ruby]
+----
+svg = Lasem.render(mathml, input: :mathml, output: :svg)
+File.write("equation.svg", svg)
+----
+====
+
+The script that produced the images above is at
+link:docs/images/render_samples.rb[`docs/images/render_samples.rb`].
+
+
+[#native-dependency]
+== Native dependency resolution
+
+The released gem does not package or build the upstream Lasem C library.
+Install Lasem before installing this gem when possible, so the native
+extension can link against it at install time.
 
 The gem looks for Lasem in this order:
 
-1. A system Lasem package discovered with `pkg-config`.
-2. A source-checkout vendored Lasem install under `vendor/lasem/install`.
-3. A compiled stub extension that raises `Lasem::DependencyError`.
+. A system Lasem package discovered with `pkg-config`.
+. A source-checkout vendored Lasem install under `vendor/lasem/install`.
+. A compiled stub extension that raises `Lasem::DependencyError` when called.
 
-The stub keeps the Ruby API loadable on machines that do not have Lasem yet,
-while making rendering failures explicit. If rendering raises
-`Lasem::DependencyError`, run `lasem-doctor --all-warnings` for setup
-diagnostics.
+The stub keeps `require "lasem"` working on machines that do not have Lasem
+yet, while making rendering failures explicit.
 
-== Rebuilding after installing Lasem
-
-If the gem was installed before Lasem was available, Ruby may have compiled the
-fallback stub extension. After installing Lasem, rebuild the native extension so
-the gem links against the real Lasem library.
-
-For an installed gem:
+If the gem was installed before Lasem was available, rebuild the native
+extension once Lasem is in place:
 
 [source,sh]
 ----
 gem pristine lasem --extensions
 ----
 
-When using Bundler:
+With Bundler:
 
 [source,sh]
 ----
@@ -87,18 +269,35 @@ For a source checkout:
 bundle exec rake clean compile
 ----
 
-Then verify the native extension is available:
+Verify the result:
 
 [source,sh]
 ----
 ruby -rlasem -e 'p Lasem.native_available?'
 ----
 
-== Vendored Lasem
 
-The vendored build tasks are development helpers for source checkouts. They are
-not part of normal gem installation. Initialize the Lasem submodule under
-`vendor/lasem/source`, then run:
+== Troubleshooting
+
+Run the bundled doctor:
+
+[source,sh]
+----
+bundle exec lasem-doctor --all-warnings
+----
+
+It reports missing executables, missing pkg-config packages, and submodule
+state. Output ends with `Required dependencies look available.` once the
+toolchain is complete.
+
+If `Lasem.render` raises `Lasem::DependencyError`, the gem is loading the stub
+extension. Rebuild after installing Lasem (see <<native-dependency>>).
+
+
+== Vendored Lasem (source checkout)
+
+The vendored build is a development helper for source checkouts. It is not
+part of normal gem installation.
 
 [source,sh]
 ----
@@ -108,50 +307,13 @@ bundle exec rake lasem:build
 bundle exec rake clean compile
 ----
 
-For extra setup hints, run:
+The build task installs Lasem into `vendor/lasem/install`. The native
+extension adds that install's `pkgconfig` directory to `PKG_CONFIG_PATH` and
+embeds the vendored library directory as a runtime library path.
 
-[source,sh]
-----
-exe/lasem-doctor --all-warnings
-----
+The vendored Lasem source is licensed under LGPL-2.1-or-later. Keep Lasem's
+license files with the vendored source when updating it.
 
-The build task installs Lasem into `vendor/lasem/install`. The extension adds
-that install's `pkgconfig` directories to `PKG_CONFIG_PATH` and embeds the
-vendored library directory as a runtime library path.
-
-If `Lasem.native_available?` is still `false` after `lasem:build`, rebuild the
-extension with `bundle exec rake clean compile` so Ruby stops loading any older
-stub extension.
-
-The vendored Lasem source is LGPL-2.1-or-later. Keep Lasem's license files with
-the vendored source and update this gem when the vendored library is updated.
-
-== System dependencies
-
-Debian or Ubuntu:
-
-[source,sh]
-----
-sudo apt-get install build-essential ruby-dev pkg-config meson ninja-build \
-  bison flex gettext libglib2.0-dev libgdk-pixbuf-2.0-dev libcairo2-dev \
-  libpango1.0-dev libxml2-dev fonts-lyx
-----
-
-Fedora:
-
-[source,sh]
-----
-sudo dnf install gcc ruby-devel pkgconf-pkg-config meson ninja-build \
-  bison flex gettext glib2-devel gdk-pixbuf2-devel cairo-devel pango-devel \
-  libxml2-devel lyx-fonts
-----
-
-Lasem's upstream documentation recommends Computer Modern fonts from the LyX
-font packages: `fonts-lyx` on Debian/Ubuntu and `lyx-fonts` on Fedora.
-
-`exe/lasem-doctor` checks the local toolchain and pkg-config dependencies.
-Package names vary by operating system and distribution release, so install
-the matching development packages with the package manager for your platform.
 
 == Development
 
@@ -160,14 +322,14 @@ Ruby 3.2 or newer is required.
 [source,sh]
 ----
 bundle install
-bundle exec rake
+bundle exec rake          # runs RSpec
 bundle exec rubocop
 ----
 
-Useful environment variables:
+Environment variables understood by the build:
 
 `LASEM_PKG_CONFIG`::
-  Override the pkg-config package name, for example `lasem-0.6`.
+  Override the pkg-config package name (for example `lasem-0.6`).
 
 `LASEM_SOURCE_DIR`::
   Override the vendored source directory used by `rake lasem:build`.
@@ -178,3 +340,14 @@ Useful environment variables:
 `LASEM_INSTALL_DIR`::
   Override the install prefix used by `rake lasem:build` and the native
   extension.
+
+
+== Copyright and license
+
+Copyright https://www.ribose.com[Ribose].
+
+`lasem` (the Ruby gem) is licensed under the BSD 2-Clause license. See
+link:LICENSE.txt[LICENSE.txt] for details.
+
+The vendored Lasem C library is licensed under LGPL-2.1-or-later. Its license
+files ship with the vendored source under `vendor/lasem/source/`.
