@@ -49,6 +49,7 @@ RSpec.describe Lasem::DependencyDoctor do
       "cairo" => "1.18.0",
       "pangocairo" => "1.54.0",
       "libxml-2.0" => "2.12.0",
+      "lasem-0.6" => "0.6.0",
     }
   end
 
@@ -100,6 +101,20 @@ RSpec.describe Lasem::DependencyDoctor do
 
       expect(report).to be_success
       expect(report.to_s).to include("Required dependencies look available.")
+    end
+
+    it "requires a Lasem pkg-config package" do
+      versions = all_pkg_config_versions.reject do |package, _version|
+        package.start_with?("lasem")
+      end
+      report = described_class.new(
+        root: root,
+        probe: probe(executables: apt_executables,
+                     pkg_config_versions: versions),
+      ).report
+
+      expect(report).not_to be_success
+      expect(report.to_s).to include("lasem-0.6 or lasem or lasem-0.4")
     end
 
     it "can include Lasem-specific setup warnings" do

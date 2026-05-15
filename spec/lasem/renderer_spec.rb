@@ -24,6 +24,22 @@ RSpec.describe Lasem::Renderer do
     )
   end
 
+  def render_output(format, **options)
+    described_class.render(
+      mathml,
+      input: :mathml,
+      output: format,
+      **options,
+    )
+  end
+
+  def png_dimensions(png)
+    [
+      png.byteslice(16, 4).unpack1("N"),
+      png.byteslice(20, 4).unpack1("N"),
+    ]
+  end
+
   def first_use_coordinates(svg)
     match = svg.match(/<use\b[^>]*\sx="([^"]+)"[^>]*\sy="([^"]+)"/)
     raise "No SVG use element found" unless match
@@ -127,6 +143,27 @@ RSpec.describe Lasem::Renderer do
       skip_without_native_lasem
 
       expect(render_sample_mathml).to include("<svg")
+    end
+
+    it "renders PNG output when the native layer is available" do
+      skip_without_native_lasem
+
+      png = render_output(:png, width: 72, height: 72, ppi: 144.0)
+
+      expect(png.byteslice(0, 8)).to eq("\x89PNG\r\n\x1A\n".b)
+      expect(png_dimensions(png)).to eq([144, 144])
+    end
+
+    it "renders PDF output when the native layer is available" do
+      skip_without_native_lasem
+
+      expect(render_output(:pdf)).to start_with("%PDF")
+    end
+
+    it "renders PostScript output when the native layer is available" do
+      skip_without_native_lasem
+
+      expect(render_output(:ps)).to start_with("%!PS-Adobe")
     end
 
     it "scales explicit export dimensions by zoom" do
