@@ -59,7 +59,7 @@ lasem_positive_pixel_size(double value, unsigned int *size, const char **message
 		return 0;
 	}
 
-	if (value > UINT_MAX) {
+	if (value > INT_MAX) {
 		*message = "is too large";
 		return 0;
 	}
@@ -123,7 +123,7 @@ lasem_create_surface(const char *format, VALUE *output, double width_pt, double 
 
 	if (strcmp(format, "png") == 0) {
 		/* Cairo: raster PNG output is rendered through an ARGB image surface. */
-		return cairo_image_surface_create(CAIRO_FORMAT_ARGB32, width_px, height_px);
+		return cairo_image_surface_create(CAIRO_FORMAT_ARGB32, (int) width_px, (int) height_px);
 	}
 
 	return NULL;
@@ -162,9 +162,10 @@ lasem_native_render(VALUE self, VALUE input_value, VALUE input_type_value, VALUE
 	double offset_y;
 	double render_offset_x;
 	double render_offset_y;
-	unsigned int width_px;
-	unsigned int height_px;
+	unsigned int width_px = 0;
+	unsigned int height_px = 0;
 	int explicit_size;
+	int raster_output;
 	const char *pixel_size_error;
 
 	StringValue(input_value);
@@ -182,14 +183,17 @@ lasem_native_render(VALUE self, VALUE input_value, VALUE input_type_value, VALUE
 	render_offset_x = zoom * offset_x;
 	render_offset_y = zoom * offset_y;
 	explicit_size = !NIL_P(width_value) && !NIL_P(height_value);
+	raster_output = strcmp(format, "png") == 0;
 	if (!lasem_supported_output_format(format)) {
 		rb_raise(e_render_error, "unsupported output format: %s", format);
 	}
 	if (explicit_size) {
 		width_pt = zoom * NUM2DBL(width_value);
 		height_pt = zoom * NUM2DBL(height_value);
-		width_px = lasem_checked_positive_pixel_size(width_pt, "width");
-		height_px = lasem_checked_positive_pixel_size(height_pt, "height");
+		if (raster_output) {
+			width_px = lasem_checked_positive_pixel_size(width_pt * ppi / 72.0, "width");
+			height_px = lasem_checked_positive_pixel_size(height_pt * ppi / 72.0, "height");
+		}
 	}
 
 	document = lasem_document_from_input(input, input_size, input_type, &error);
@@ -209,18 +213,20 @@ lasem_native_render(VALUE self, VALUE input_value, VALUE input_type_value, VALUE
 		width_pt = 2.0;
 		height_pt = 2.0;
 		lsm_dom_view_get_size(view, &width_pt, &height_pt, NULL);
-		lsm_dom_view_get_size_pixels(view, &width_px, &height_px, NULL);
 		width_pt *= zoom;
 		height_pt *= zoom;
-		if (!lasem_positive_pixel_size((double) width_px * zoom, &width_px, &pixel_size_error)) {
-			g_object_unref(view);
-			g_object_unref(document);
-			rb_raise(e_render_error, "width %s", pixel_size_error);
-		}
-		if (!lasem_positive_pixel_size((double) height_px * zoom, &height_px, &pixel_size_error)) {
-			g_object_unref(view);
-			g_object_unref(document);
-			rb_raise(e_render_error, "height %s", pixel_size_error);
+		if (raster_output) {
+			lsm_dom_view_get_size_pixels(view, &width_px, &height_px, NULL);
+			if (!lasem_positive_pixel_size((double) width_px * zoom, &width_px, &pixel_size_error)) {
+				g_object_unref(view);
+				g_object_unref(document);
+				rb_raise(e_render_error, "width %s", pixel_size_error);
+			}
+			if (!lasem_positive_pixel_size((double) height_px * zoom, &height_px, &pixel_size_error)) {
+				g_object_unref(view);
+				g_object_unref(document);
+				rb_raise(e_render_error, "height %s", pixel_size_error);
+			}
 		}
 	}
 

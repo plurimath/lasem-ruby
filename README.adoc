@@ -238,11 +238,14 @@ The released gem does not package or build the upstream Lasem C library.
 Install Lasem before installing this gem when possible, so the native
 extension can link against it at install time.
 
-The gem looks for Lasem in this order:
+The native build resolves Lasem in this order:
 
+. A source-checkout vendored Lasem install under `vendor/lasem/install`, when present.
 . A system Lasem package discovered with `pkg-config`.
-. A source-checkout vendored Lasem install under `vendor/lasem/install`.
 . A compiled stub extension that raises `Lasem::DependencyError` when called.
+
+Released gems do not include the vendored Lasem source, so installed gems
+normally resolve Lasem through the system `pkg-config` path.
 
 The stub keeps `require "lasem"` working on machines that do not have Lasem
 yet, while making rendering failures explicit.

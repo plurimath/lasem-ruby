@@ -12,7 +12,12 @@ module Lasem
     ROOT = File.expand_path("../..", __dir__)
 
     ExecutableDependency = Struct.new(:name, :executables, keyword_init: true)
-    PkgConfigDependency = Struct.new(:name, :requirement, keyword_init: true)
+    PkgConfigDependency = Struct.new(
+      :name,
+      :requirement,
+      :candidates,
+      keyword_init: true,
+    )
     OutdatedPackage = Struct.new(:dependency, :version, keyword_init: true)
 
     EXECUTABLE_DEPENDENCIES = [
@@ -71,9 +76,28 @@ module Lasem
     end
 
     def pkg_config_versions
-      @pkg_config_versions ||= PKG_CONFIG_DEPENDENCIES.to_h do |dependency|
-        [dependency, probe.pkg_config_version(dependency.name)]
+      @pkg_config_versions ||= pkg_config_dependencies.to_h do |dependency|
+        version = pkg_config_candidates_for(dependency).filter_map do |package|
+          probe.pkg_config_version(package)
+        end.first
+
+        [dependency, version]
       end
+    end
+
+    def pkg_config_dependencies
+      [lasem_pkg_config_dependency, *PKG_CONFIG_DEPENDENCIES]
+    end
+
+    def lasem_pkg_config_dependency
+      PkgConfigDependency.new(
+        name: lasem_pkg_config_candidates.join(" or "),
+        candidates: lasem_pkg_config_candidates,
+      )
+    end
+
+    def pkg_config_candidates_for(dependency)
+      dependency.candidates || [dependency.name]
     end
 
     def missing_pkg_config
