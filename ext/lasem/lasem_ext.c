@@ -7,6 +7,8 @@
 #include <glib-object.h>
 #include <math.h>
 #include <limits.h>
+#include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 
 /* Lasem: core DOM and parser APIs used to parse SVG, MathML, and itex input. */
@@ -14,12 +16,22 @@
 #include <lsmdomparser.h>
 #include <lsmmathmldocument.h>
 
+/* Upper bound on total raster (ARGB32) pixels, to keep a single render from
+ * allocating unbounded memory when fed untrusted input. The default ~= 256 MB
+ * (4 bytes/pixel). Override at build time with -DLASEM_MAX_RASTER_PIXELS=N. */
+#ifndef LASEM_MAX_RASTER_PIXELS
+#define LASEM_MAX_RASTER_PIXELS (64ULL * 1024ULL * 1024ULL)
+#endif
+
 static VALUE m_lasem;
 static VALUE m_native;
 static VALUE e_render_error;
 
+/* Keep in sync with lib/lasem/error.rb: Lasem::Error is a marker MODULE mixed
+ * into every gem error so `rescue Lasem::Error` catches them all, while each
+ * error keeps its own superclass (e.g. OptionError stays an ArgumentError). */
 static VALUE
-lasem_get_or_define_class(VALUE parent, const char *name, VALUE superclass)
+lasem_get_or_define_module(VALUE parent, const char *name)
 {
 	ID id = rb_intern(name);
 
@@ -27,28 +39,114 @@ lasem_get_or_define_class(VALUE parent, const char *name, VALUE superclass)
 		return rb_const_get(parent, id);
 	}
 
-	return rb_define_class_under(parent, name, superclass);
+	return rb_define_module_under(parent, name);
+}
+
+/* Define (or fetch) a StandardError subclass under `parent` and include the
+ * Lasem::Error marker module so the error is rescuable both as itself and as
+ * Lasem::Error. Tolerant of the class already existing (Ruby autoload order). */
+static VALUE
+lasem_define_error_class(VALUE parent, const char *name, VALUE marker)
+{
+	ID id = rb_intern(name);
+	VALUE klass;
+
+	if (rb_const_defined_at(parent, id)) {
+		klass = rb_const_get(parent, id);
+	} else {
+		klass = rb_define_class_under(parent, name, rb_eStandardError);
+	}
+
+	rb_include_module(klass, marker);
+	return klass;
 }
 
 static void
 lasem_raise_gerror(VALUE error_class, GError *error, const char *fallback_message)
 {
 	if (error != NULL) {
-		VALUE message = rb_str_new_cstr(error->message);
+		/* Copy the message onto the stack and free the GError before any Ruby
+		 * allocation, so a raising allocation cannot leak the GError. */
+		char message[512];
+
+		g_strlcpy(message, error->message, sizeof(message));
 		g_error_free(error);
-		rb_exc_raise(rb_exc_new_str(error_class, message));
+		rb_raise(error_class, "%s", message);
 	}
 
 	rb_raise(error_class, "%s", fallback_message);
 }
 
-static cairo_status_t
-lasem_write_to_ruby_string(void *closure, const unsigned char *data, unsigned int length)
-{
-	VALUE *output = (VALUE *) closure;
+/* Growable C byte buffer used to collect Cairo output. The Ruby result string
+ * is built from it only after every native resource is released, so the Cairo
+ * write callback never calls into the Ruby runtime (where an allocation could
+ * raise and longjmp out, leaking the surface/context/view/document). */
+typedef struct {
+	unsigned char *data;
+	size_t length;
+	size_t capacity;
+	int failed;
+} lasem_buffer;
 
-	rb_str_cat(*output, (const char *) data, length);
+static cairo_status_t
+lasem_buffer_write(void *closure, const unsigned char *data, unsigned int length)
+{
+	lasem_buffer *buffer = (lasem_buffer *) closure;
+	size_t needed;
+
+	if (buffer->failed) {
+		return CAIRO_STATUS_WRITE_ERROR;
+	}
+
+	needed = buffer->length + length;
+	if (needed < buffer->length) {
+		/* size_t overflow */
+		buffer->failed = 1;
+		return CAIRO_STATUS_WRITE_ERROR;
+	}
+
+	if (needed > buffer->capacity) {
+		size_t capacity = buffer->capacity ? buffer->capacity : 4096;
+		unsigned char *grown;
+
+		while (capacity < needed) {
+			if (capacity > SIZE_MAX / 2) {
+				capacity = needed;
+				break;
+			}
+			capacity *= 2;
+		}
+
+		grown = realloc(buffer->data, capacity);
+		if (grown == NULL) {
+			buffer->failed = 1;
+			return CAIRO_STATUS_WRITE_ERROR;
+		}
+
+		buffer->data = grown;
+		buffer->capacity = capacity;
+	}
+
+	memcpy(buffer->data + buffer->length, data, length);
+	buffer->length += length;
 	return CAIRO_STATUS_SUCCESS;
+}
+
+struct lasem_string_build {
+	const char *data;
+	long length;
+};
+
+/* Runs under rb_protect so the caller can free the C buffer even if this
+ * (Ruby) allocation raises. */
+static VALUE
+lasem_build_output_string(VALUE arg)
+{
+	struct lasem_string_build *build = (struct lasem_string_build *) arg;
+	VALUE string = rb_str_new(build->data, build->length);
+
+	rb_enc_associate_index(string, rb_ascii8bit_encindex());
+	return string;
 }
 
 static int
@@ -81,6 +179,14 @@ lasem_checked_positive_pixel_size(double value, const char *name)
 	return size;
 }
 
+/* Reject raster surfaces whose total pixel count would exceed the configured
+ * budget, guarding against OOM from hostile or pathological input. */
+static int
+lasem_raster_budget_ok(unsigned int width_px, unsigned int height_px)
+{
+	return (uint64_t) width_px * (uint64_t) height_px <= LASEM_MAX_RASTER_PIXELS;
+}
+
 static int
 lasem_supported_output_format(const char *format)
 {
@@ -103,22 +209,22 @@ lasem_document_from_input(const char *input, gssize input_size, const char *inpu
 }
 
 static cairo_surface_t *
-lasem_create_surface(const char *format, VALUE *output, double width_pt, double height_pt,
+lasem_create_surface(const char *format, lasem_buffer *buffer, double width_pt, double height_pt,
 		     unsigned int width_px, unsigned int height_px)
 {
 	if (strcmp(format, "svg") == 0) {
-		/* Cairo: vector SVG output is streamed into a Ruby string callback. */
-		return cairo_svg_surface_create_for_stream(lasem_write_to_ruby_string, output, width_pt, height_pt);
+		/* Cairo: vector SVG output is streamed into the C byte buffer. */
+		return cairo_svg_surface_create_for_stream(lasem_buffer_write, buffer, width_pt, height_pt);
 	}
 
 	if (strcmp(format, "pdf") == 0) {
-		/* Cairo: vector PDF output is streamed into a Ruby string callback. */
-		return cairo_pdf_surface_create_for_stream(lasem_write_to_ruby_string, output, width_pt, height_pt);
+		/* Cairo: vector PDF output is streamed into the C byte buffer. */
+		return cairo_pdf_surface_create_for_stream(lasem_buffer_write, buffer, width_pt, height_pt);
 	}
 
 	if (strcmp(format, "ps") == 0) {
-		/* Cairo: vector PostScript output is streamed into a Ruby string callback. */
-		return cairo_ps_surface_create_for_stream(lasem_write_to_ruby_string, output, width_pt, height_pt);
+		/* Cairo: vector PostScript output is streamed into the C byte buffer. */
+		return cairo_ps_surface_create_for_stream(lasem_buffer_write, buffer, width_pt, height_pt);
 	}
 
 	if (strcmp(format, "png") == 0) {
@@ -149,6 +255,7 @@ lasem_native_render(VALUE self, VALUE input_value, VALUE input_type_value, VALUE
 	cairo_surface_t *surface;
 	cairo_t *cairo;
 	cairo_status_t status;
+	lasem_buffer buffer = { NULL, 0, 0, 0 };
 	VALUE output;
 	const char *input;
 	const char *input_type;
@@ -184,6 +291,17 @@ lasem_native_render(VALUE self, VALUE input_value, VALUE input_type_value, VALUE
 	render_offset_y = zoom * offset_y;
 	explicit_size = !NIL_P(width_value) && !NIL_P(height_value);
 	raster_output = strcmp(format, "png") == 0;
+	/* Defense in depth: Lasem::RenderOptions already validates these, but
+	 * Native.render is a public entry point, so re-check before doing any work. */
+	if (!isfinite(ppi) || ppi <= 0.0) {
+		rb_raise(e_render_error, "ppi must be greater than 0");
+	}
+	if (!isfinite(zoom) || zoom <= 0.0) {
+		rb_raise(e_render_error, "zoom must be greater than 0");
+	}
+	if (!isfinite(offset_x) || !isfinite(offset_y)) {
+		rb_raise(e_render_error, "offset must be finite");
+	}
 	if (!lasem_supported_output_format(format)) {
 		rb_raise(e_render_error, "unsupported output format: %s", format);
 	}
@@ -193,9 +311,20 @@ lasem_native_render(VALUE self, VALUE input_value, VALUE input_type_value, VALUE
 		if (raster_output) {
 			width_px = lasem_checked_positive_pixel_size(width_pt * ppi / 72.0, "width");
 			height_px = lasem_checked_positive_pixel_size(height_pt * ppi / 72.0, "height");
+			if (!lasem_raster_budget_ok(width_px, height_px)) {
+				rb_raise(e_render_error,
+					 "requested raster size %ux%u exceeds the maximum of %llu pixels",
+					 width_px, height_px,
+					 (unsigned long long) LASEM_MAX_RASTER_PIXELS);
+			}
 		}
 	}
 
+	/* The GVL is deliberately held for the whole parse/layout/render. Lasem's
+	 * XML parser and Pango/fontconfig are not guaranteed thread-safe, so the
+	 * GVL is what serializes concurrent renders in one process. Do NOT wrap
+	 * this in rb_thread_call_without_gvl without first making upstream Lasem
+	 * usage thread-safe (e.g. a process-wide mutex). */
 	document = lasem_document_from_input(input, input_size, input_type, &error);
 	if (document == NULL) {
 		lasem_raise_gerror(e_render_error, error, "Lasem could not parse the input document");
@@ -227,17 +356,22 @@ lasem_native_render(VALUE self, VALUE input_value, VALUE input_type_value, VALUE
 				g_object_unref(document);
 				rb_raise(e_render_error, "height %s", pixel_size_error);
 			}
+			if (!lasem_raster_budget_ok(width_px, height_px)) {
+				g_object_unref(view);
+				g_object_unref(document);
+				rb_raise(e_render_error,
+					 "rendered raster size %ux%u exceeds the maximum of %llu pixels",
+					 width_px, height_px,
+					 (unsigned long long) LASEM_MAX_RASTER_PIXELS);
+			}
 		}
 	}
 
-	output = rb_str_new(NULL, 0);
-	rb_enc_associate_index(output, rb_ascii8bit_encindex());
-
-	surface = lasem_create_surface(format, &output, width_pt, height_pt, width_px, height_px);
+	surface = lasem_create_surface(format, &buffer, width_pt, height_pt, width_px, height_px);
 	if (surface == NULL) {
 		g_object_unref(view);
 		g_object_unref(document);
-		rb_raise(e_render_error, "unsupported output format: %s", format);
+		rb_raise(e_render_error, "Cairo could not allocate a rendering surface");
 	}
 	status = cairo_surface_status(surface);
 	if (status != CAIRO_STATUS_SUCCESS) {
@@ -258,18 +392,20 @@ lasem_native_render(VALUE self, VALUE input_value, VALUE input_type_value, VALUE
 		cairo_surface_destroy(surface);
 		g_object_unref(view);
 		g_object_unref(document);
+		free(buffer.data);
 		rb_raise(e_render_error, "Cairo rendering failed: %s", cairo_status_to_string(status));
 	}
 
-	if (strcmp(format, "png") == 0) {
+	if (raster_output) {
 		status = cairo_surface_write_to_png_stream(cairo_get_target(cairo),
-							   lasem_write_to_ruby_string,
-							   &output);
+							   lasem_buffer_write,
+							   &buffer);
 		if (status != CAIRO_STATUS_SUCCESS) {
 			cairo_destroy(cairo);
 			cairo_surface_destroy(surface);
 			g_object_unref(view);
 			g_object_unref(document);
+			free(buffer.data);
 			rb_raise(e_render_error, "Cairo PNG output failed: %s", cairo_status_to_string(status));
 		}
 	}
@@ -281,8 +417,37 @@ lasem_native_render(VALUE self, VALUE input_value, VALUE input_type_value, VALUE
 	g_object_unref(view);
 	g_object_unref(document);
 
+	/* All native resources are now released. Build the Ruby string last so a
+	 * Ruby allocation that raises cannot longjmp past the cleanup above. */
+	if (buffer.failed) {
+		free(buffer.data);
+		rb_raise(e_render_error, "out of memory while collecting rendered output");
+	}
 	if (status != CAIRO_STATUS_SUCCESS) {
+		free(buffer.data);
 		rb_raise(e_render_error, "Cairo output failed: %s", cairo_status_to_string(status));
+	}
+
+	if (buffer.length > (size_t) LONG_MAX) {
+		free(buffer.data);
+		rb_raise(e_render_error, "rendered output is too large");
+	}
+
+	{
+		struct lasem_string_build build = {
+			(const char *) buffer.data,
+			(long) buffer.length,
+		};
+		int state = 0;
+
+		/* Build the Ruby string under rb_protect so buffer.data is freed even
+		 * if the allocation raises (e.g. on memory pressure). */
+		output = rb_protect(lasem_build_output_string, (VALUE) &build, &state);
+		free(buffer.data);
+		buffer.data = NULL;
+		if (state) {
+			rb_jump_tag(state);
+		}
 	}
 
 	RB_GC_GUARD(output);
@@ -296,9 +461,9 @@ Init_lasem(void)
 
 	m_lasem = rb_define_module("Lasem");
 	m_native = rb_define_module_under(m_lasem, "Native");
-	e_error = lasem_get_or_define_class(m_lasem, "Error", rb_eStandardError);
-	lasem_get_or_define_class(m_lasem, "DependencyError", e_error);
-	e_render_error = lasem_get_or_define_class(m_lasem, "RenderError", e_error);
+	e_error = lasem_get_or_define_module(m_lasem, "Error");
+	lasem_define_error_class(m_lasem, "DependencyError", e_error);
+	e_render_error = lasem_define_error_class(m_lasem, "RenderError", e_error);
 
 	rb_define_singleton_method(m_native, "native_available?", lasem_native_available, 0);
 	rb_define_singleton_method(m_native, "render", lasem_native_render, 9);

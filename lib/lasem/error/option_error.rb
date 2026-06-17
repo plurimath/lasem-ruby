@@ -1,7 +1,11 @@
 # frozen_string_literal: true
 
+require_relative "../error"
+
 module Lasem
   class OptionError < ArgumentError
+    include Error
+
     def self.unknown_options(names:)
       new("unknown option(s): #{names.join(', ')}")
     end

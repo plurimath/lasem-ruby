@@ -27,6 +27,7 @@ clear; the gem itself is named `lasem` because the public Ruby API is already
 namespaced as `Lasem`.
 
 
+[#prerequisites]
 == Prerequisites
 
 `lasem` is a native extension. Ruby 3.2 or newer is required, and the upstream
@@ -127,8 +128,10 @@ Returns the rendered output as a binary string in the requested format.
 
 `input`::
   Source language. One of `:xml`, `:mathml`, `:svg`, `:latex`, `:itex`.
-  Default `:xml`. `:latex` and `:itex` are passed unchanged to Lasem's itex
-  parser; the gem does not infer or add math delimiters.
+  Default `:xml`. `:xml`, `:mathml`, and `:svg` are equivalent: all are parsed
+  by Lasem's XML document parser, which auto-detects MathML vs SVG from the
+  document. `:latex` and `:itex` are passed unchanged to Lasem's itex parser;
+  the gem does not infer or add math delimiters.
 
 `output`::
   Target format. One of `:svg`, `:png`, `:pdf`, `:ps`. Default `:svg`.
@@ -144,7 +147,10 @@ Returns the rendered output as a binary string in the requested format.
   Default `nil` (use Lasem's natural size).
 
 `offset_x`, `offset_y`::
-  Optional translation in user units. Default `0.0`.
+  Optional translation in user units. Default `0.0`. At the default `zoom: 1.0`
+  the on-canvas displacement equals the offset; with a non-default `zoom` the
+  offset is applied in the zoom-scaled coordinate system, so the effective
+  displacement also scales with `zoom`.
 
 === `Lasem.native_available?`
 
@@ -289,9 +295,21 @@ Run the bundled doctor:
 bundle exec lasem-doctor --all-warnings
 ----
 
-It reports missing executables, missing pkg-config packages, and submodule
-state. Output ends with `Required dependencies look available.` once the
-toolchain is complete.
+It reports missing executables and missing pkg-config packages, and with
+`--all-warnings` (or `--lasem-conflict-warnings`) it also reports submodule and
+setup state. The line `Required dependencies look available.` is printed when
+the required toolchain is present; any warnings are listed after the status
+section. A successful dependency check does not by itself guarantee the native
+extension is built -- verify that separately with `Lasem.native_available?`.
+
+The same checks are available through Rake, where the `WARNINGS` variable maps
+to the CLI flags: `WARNINGS=all` (all warnings), `WARNINGS=lasem` (Lasem setup
+warnings), `WARNINGS=deps` (dependency warnings):
+
+[source,sh]
+----
+bundle exec rake lasem:doctor WARNINGS=all
+----
 
 If `Lasem.render` raises `Lasem::DependencyError`, the gem is loading the stub
 extension. Rebuild after installing Lasem (see <<native-dependency>>).

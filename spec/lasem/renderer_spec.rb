@@ -99,6 +99,23 @@ RSpec.describe Lasem::Renderer do
       end.to raise_error(Lasem::OptionError, /source/)
     end
 
+    it "does not mask a malformed #to_str as an empty-source error" do
+      bad = Object.new
+      def bad.to_str = 123
+
+      expect { described_class.render(bad) }.to raise_error(TypeError)
+    end
+
+    it "transcodes non-UTF-8 source to UTF-8 before rendering" do
+      stub_native_render
+
+      described_class.render(mathml.encode(Encoding::UTF_16), input: :mathml)
+
+      expect(Lasem::NativeLoader).to have_received(:render) do |source, *|
+        expect(source.encoding).to eq(Encoding::UTF_8)
+      end
+    end
+
     it "requires a positive ppi value" do
       expect do
         described_class.render(mathml, ppi: 0)
@@ -148,10 +165,22 @@ RSpec.describe Lasem::Renderer do
     it "renders PNG output when the native layer is available" do
       skip_without_native_lasem
 
-      png = render_output(:png, width: 72, height: 72, ppi: 144.0)
+      # Non-square dimensions so a width/height swap would be caught.
+      png = render_output(:png, width: 72, height: 36, ppi: 144.0)
 
       expect(png.byteslice(0, 8)).to eq("\x89PNG\r\n\x1A\n".b)
-      expect(png_dimensions(png)).to eq([144, 144])
+      expect(png_dimensions(png)).to eq([144, 72])
+    end
+
+    it "renders auto-sized PNG output (no explicit dimensions)" do
+      skip_without_native_lasem
+
+      png = render_output(:png, ppi: 144.0)
+      width, height = png_dimensions(png)
+
+      expect(png.byteslice(0, 8)).to eq("\x89PNG\r\n\x1A\n".b)
+      expect(width).to be > 0
+      expect(height).to be > 0
     end
 
     it "renders PDF output when the native layer is available" do
@@ -179,6 +208,50 @@ RSpec.describe Lasem::Renderer do
 
       expect(native_offset_deltas(offset_x: 1.0, offset_y: 1.0))
         .to all(be_within(0.001).of(4.0))
+    end
+
+    it "renders correctly from multiple threads" do
+      skip_without_native_lasem
+
+      threads = Array.new(4) { Thread.new { render_sample_mathml } }
+
+      expect(threads.map(&:value)).to all(include("<svg"))
+    end
+
+    it "raises a render error for unparseable input" do
+      skip_without_native_lasem
+
+      expect do
+        described_class.render("not xml at all >>><<<", input: :mathml)
+      end.to raise_error(Lasem::RenderError, /could not parse/)
+    end
+
+    it "raises a render error for an oversized raster request" do
+      skip_without_native_lasem
+
+      expect do
+        render_output(:png, width: 200_000, height: 200_000, ppi: 144.0)
+      end.to raise_error(Lasem::RenderError, /exceeds the maximum/)
+    end
+
+    it "re-validates ppi at the native boundary" do
+      skip_without_native_lasem
+
+      expect do
+        Lasem::Native.render(
+          mathml, "mathml", "svg", 0.0, 1.0, nil, nil, 0.0, 0.0
+        )
+      end.to raise_error(Lasem::RenderError, /ppi/)
+    end
+
+    it "surfaces a dependency error from the native loader" do
+      # Deterministic (does not depend on native availability): verifies the
+      # contract a consumer like Plurimath rescues when only the stub is loaded.
+      allow(Lasem::NativeLoader).to receive(:render)
+        .and_raise(Lasem::DependencyError.native_library_unavailable)
+
+      expect { render_sample_mathml }
+        .to raise_error(Lasem::DependencyError, /not available/)
     end
 
     it "raises a dependency error when the native layer is unavailable" do

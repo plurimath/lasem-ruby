@@ -2,6 +2,7 @@
 
 require "rbconfig"
 require "rubygems"
+require_relative "pkg_config"
 
 module Lasem
   class DependencyDoctor
@@ -20,13 +21,22 @@ module Lasem
     )
     OutdatedPackage = Struct.new(:dependency, :version, keyword_init: true)
 
-    EXECUTABLE_DEPENDENCIES = [
+    # Tools required to compile the gem's native extension against any Lasem
+    # (system or vendored). Missing any of these fails the doctor.
+    CORE_EXECUTABLE_DEPENDENCIES = [
       ExecutableDependency.new(
         name: "C compiler (cc, gcc, or clang)",
         executables: %w[cc gcc clang],
       ),
       ExecutableDependency.new(name: "make", executables: %w[make]),
       ExecutableDependency.new(name: "pkg-config", executables: %w[pkg-config]),
+    ].freeze
+
+    # Tools needed ONLY to build the vendored Lasem from source
+    # (`rake lasem:build`). These are not required for the released-gem path
+    # that links against a system Lasem, so they only fail the doctor when a
+    # vendored source checkout is present.
+    VENDORED_BUILD_EXECUTABLE_DEPENDENCIES = [
       ExecutableDependency.new(name: "meson", executables: %w[meson]),
       ExecutableDependency.new(
         name: "ninja or ninja-build",
@@ -34,7 +44,10 @@ module Lasem
       ),
       ExecutableDependency.new(name: "bison", executables: %w[bison]),
       ExecutableDependency.new(name: "flex", executables: %w[flex]),
-      ExecutableDependency.new(name: "msgfmt", executables: %w[msgfmt]),
+      ExecutableDependency.new(
+        name: "msgfmt (gettext)",
+        executables: %w[msgfmt],
+      ),
     ].freeze
 
     PKG_CONFIG_DEPENDENCIES = [
@@ -46,7 +59,6 @@ module Lasem
       PkgConfigDependency.new(name: "pangocairo", requirement: ">= 1.16.0"),
       PkgConfigDependency.new(name: "libxml-2.0"),
     ].freeze
-    LASEM_PKG_CONFIG_CANDIDATES = %w[lasem-0.6 lasem lasem-0.4].freeze
 
     def initialize(root: ROOT, probe: Probe.new)
       @root = root
@@ -56,8 +68,11 @@ module Lasem
     def report(lasem_conflict_warnings: false, dep_conflict_warnings: false)
       Report.new(
         missing_executables: missing_executables,
+        missing_build_executables: missing_build_executables,
+        building_from_source: building_from_source?,
         missing_pkg_config: missing_pkg_config,
         outdated_pkg_config: outdated_pkg_config,
+        unverifiable_pkg_config: unverifiable_pkg_config,
         lasem_warnings: lasem_warnings(lasem_conflict_warnings),
         dependency_warnings: dependency_warnings(dep_conflict_warnings),
       )
@@ -68,11 +83,25 @@ module Lasem
     attr_reader :root, :probe
 
     def missing_executables
-      EXECUTABLE_DEPENDENCIES.reject do |dependency|
+      reject_present(CORE_EXECUTABLE_DEPENDENCIES)
+    end
+
+    def missing_build_executables
+      reject_present(VENDORED_BUILD_EXECUTABLE_DEPENDENCIES)
+    end
+
+    def reject_present(dependencies)
+      dependencies.reject do |dependency|
         dependency.executables.any? do |executable|
           probe.executable?(executable)
         end
       end
+    end
+
+    # True only when a vendored Lasem source checkout is present, i.e. the user
+    # is set up to build Lasem from source and therefore needs the build tools.
+    def building_from_source?
+      probe.file?(File.join(root, "vendor/lasem/source/meson.build"))
     end
 
     def pkg_config_versions
@@ -109,9 +138,24 @@ module Lasem
     def outdated_pkg_config
       pkg_config_versions.filter_map do |dependency, version|
         next if version.nil? || dependency.requirement.nil?
+        # Skip versions Gem::Version cannot parse here (handled by
+        # unverifiable_pkg_config) so the comparison below never raises.
+        next unless Gem::Version.correct?(version)
         next if Gem::Requirement.new(dependency.requirement).satisfied_by?(
           Gem::Version.new(version),
         )
+
+        OutdatedPackage.new(dependency: dependency, version: version)
+      end
+    end
+
+    # Required packages whose reported version cannot be parsed, so we cannot
+    # confirm the requirement. Reported and failed-closed rather than crashing
+    # (old behavior) or silently passing.
+    def unverifiable_pkg_config
+      pkg_config_versions.filter_map do |dependency, version|
+        next if version.nil? || dependency.requirement.nil?
+        next if Gem::Version.correct?(version)
 
         OutdatedPackage.new(dependency: dependency, version: version)
       end
@@ -165,10 +209,7 @@ module Lasem
     end
 
     def lasem_pkg_config_candidates
-      override = ENV.fetch("LASEM_PKG_CONFIG", nil)
-      return [override] if override && !override.empty?
-
-      LASEM_PKG_CONFIG_CANDIDATES
+      Lasem::PkgConfig.candidates
     end
 
     def dependency_warnings(enabled)

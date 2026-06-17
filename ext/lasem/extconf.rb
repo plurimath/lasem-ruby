@@ -2,6 +2,7 @@
 
 require "mkmf"
 require "shellwords"
+require_relative "../../lib/lasem/pkg_config"
 
 ROOT = File.expand_path("../..", __dir__)
 VENDORED_INSTALL_DIR = File.expand_path(
@@ -30,14 +31,7 @@ end
 add_pkg_config_path(File.join(VENDORED_INSTALL_DIR, "lib", "pkgconfig"))
 add_pkg_config_path(File.join(VENDORED_INSTALL_DIR, "lib64", "pkgconfig"))
 
-pkg_config_candidates =
-  if ENV["LASEM_PKG_CONFIG"] && !ENV["LASEM_PKG_CONFIG"].empty?
-    [ENV["LASEM_PKG_CONFIG"]]
-  else
-    %w[lasem-0.6 lasem lasem-0.4]
-  end
-
-lasem_package = find_lasem_package(pkg_config_candidates)
+lasem_package = find_lasem_package(Lasem::PkgConfig.candidates)
 
 required_headers = %w[
   lsm.h
@@ -54,6 +48,15 @@ end
 if has_lasem_headers
   add_runtime_library_path(File.join(VENDORED_INSTALL_DIR, "lib"))
   add_runtime_library_path(File.join(VENDORED_INSTALL_DIR, "lib64"))
+
+  # Embed the resolved package's own libdir as a runtime path too, so a system
+  # Lasem installed under a non-default prefix (Homebrew/mise/Nix) loads without
+  # the user having to set LD_LIBRARY_PATH. Use mkmf's pkg_config so the same
+  # pkg-config tool that resolved the package supplies the libdir.
+  # add_runtime_library_path skips missing/standard dirs, so this is a no-op for
+  # /usr-style installs.
+  lasem_libdir = pkg_config(lasem_package, "variable=libdir")&.strip
+  add_runtime_library_path(lasem_libdir) if lasem_libdir && !lasem_libdir.empty?
 
   $defs << "-DHAVE_LASEM"
   $srcs = ["lasem_ext.c"]
