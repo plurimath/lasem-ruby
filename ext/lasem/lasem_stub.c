@@ -1,7 +1,9 @@
 #include <ruby.h>
 
+/* Keep in sync with lib/lasem/error.rb and lasem_ext.c: Lasem::Error is a
+ * marker MODULE mixed into every gem error. */
 static VALUE
-lasem_get_or_define_class(VALUE parent, const char *name, VALUE superclass)
+lasem_get_or_define_module(VALUE parent, const char *name)
 {
 	ID id = rb_intern(name);
 
@@ -9,7 +11,23 @@ lasem_get_or_define_class(VALUE parent, const char *name, VALUE superclass)
 		return rb_const_get(parent, id);
 	}
 
-	return rb_define_class_under(parent, name, superclass);
+	return rb_define_module_under(parent, name);
+}
+
+static VALUE
+lasem_define_error_class(VALUE parent, const char *name, VALUE marker)
+{
+	ID id = rb_intern(name);
+	VALUE klass;
+
+	if (rb_const_defined_at(parent, id)) {
+		klass = rb_const_get(parent, id);
+	} else {
+		klass = rb_define_class_under(parent, name, rb_eStandardError);
+	}
+
+	rb_include_module(klass, marker);
+	return klass;
 }
 
 static VALUE
@@ -22,8 +40,8 @@ static VALUE
 lasem_native_render(int argc, VALUE *argv, VALUE self)
 {
 	VALUE m_lasem = rb_define_module("Lasem");
-	VALUE e_error = lasem_get_or_define_class(m_lasem, "Error", rb_eStandardError);
-	VALUE e_dependency_error = lasem_get_or_define_class(m_lasem, "DependencyError", e_error);
+	VALUE e_error = lasem_get_or_define_module(m_lasem, "Error");
+	VALUE e_dependency_error = lasem_define_error_class(m_lasem, "DependencyError", e_error);
 
 	/* Keep in sync with Lasem::DependencyError::MESSAGE. */
 	rb_raise(e_dependency_error,

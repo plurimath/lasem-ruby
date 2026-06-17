@@ -5,8 +5,12 @@ module Lasem
     class Report
       def initialize(attributes)
         @missing_executables = attributes.fetch(:missing_executables)
+        @missing_build_executables =
+          attributes.fetch(:missing_build_executables)
+        @building_from_source = attributes.fetch(:building_from_source)
         @missing_pkg_config = attributes.fetch(:missing_pkg_config)
         @outdated_pkg_config = attributes.fetch(:outdated_pkg_config)
+        @unverifiable_pkg_config = attributes.fetch(:unverifiable_pkg_config)
         @lasem_warnings = attributes.fetch(:lasem_warnings)
         @dependency_warnings = attributes.fetch(:dependency_warnings)
       end
@@ -14,7 +18,9 @@ module Lasem
       def success?
         missing_executables.empty? &&
           missing_pkg_config.empty? &&
-          outdated_pkg_config.empty?
+          outdated_pkg_config.empty? &&
+          unverifiable_pkg_config.empty? &&
+          (!building_from_source || missing_build_executables.empty?)
       end
 
       def to_s
@@ -27,8 +33,10 @@ module Lasem
 
       private
 
-      attr_reader :missing_executables, :missing_pkg_config,
-                  :outdated_pkg_config, :lasem_warnings, :dependency_warnings
+      attr_reader :missing_executables, :missing_build_executables,
+                  :building_from_source, :missing_pkg_config,
+                  :outdated_pkg_config, :unverifiable_pkg_config,
+                  :lasem_warnings, :dependency_warnings
 
       def append_status(lines)
         lines << ""
@@ -44,6 +52,27 @@ module Lasem
         )
         append_list(lines, "Missing pkg-config packages", pkg_config_names)
         append_outdated_pkg_config(lines)
+        append_unverifiable_pkg_config(lines)
+        append_build_executables(lines)
+      end
+
+      def append_unverifiable_pkg_config(lines)
+        values = unverifiable_pkg_config.map do |package|
+          "#{package.dependency.name} #{package.dependency.requirement} " \
+            "(found #{package.version}; version not recognized, cannot verify)"
+        end
+        append_list(lines, "Unverifiable pkg-config versions", values)
+      end
+
+      def append_build_executables(lines)
+        heading =
+          if building_from_source
+            "Missing vendored-build tools"
+          else
+            "Missing vendored-build tools " \
+              "(only needed to build Lasem from source)"
+          end
+        append_list(lines, heading, missing_build_executables.map(&:name))
       end
 
       def append_outdated_pkg_config(lines)

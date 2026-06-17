@@ -103,6 +103,44 @@ RSpec.describe Lasem::DependencyDoctor do
       expect(report.to_s).to include("Required dependencies look available.")
     end
 
+    it "passes for a system install without the vendored-build toolchain" do
+      report = described_class.new(
+        root: root,
+        probe: probe(executables: %w[cc make pkg-config],
+                     pkg_config_versions: all_pkg_config_versions),
+      ).report
+
+      expect(report).to be_success
+      expect(report.to_s).to include("only needed to build Lasem from source")
+    end
+
+    it "requires the vendored-build toolchain when building from source" do
+      report = described_class.new(
+        root: root,
+        probe: probe(
+          executables: %w[cc make pkg-config],
+          pkg_config_versions: all_pkg_config_versions,
+          files: ["/repo/vendor/lasem/source/meson.build"],
+        ),
+      ).report
+
+      expect(report).not_to be_success
+      expect(report.to_s).to include("Missing vendored-build tools")
+    end
+
+    it "fails closed (without crashing) on an unverifiable required version" do
+      versions = all_pkg_config_versions.merge("cairo" => "1.18.0_p1")
+      report = described_class.new(
+        root: root,
+        probe: probe(executables: apt_executables,
+                     pkg_config_versions: versions),
+      ).report
+
+      expect { report.to_s }.not_to raise_error
+      expect(report).not_to be_success
+      expect(report.to_s).to include("Unverifiable pkg-config versions")
+    end
+
     it "requires a Lasem pkg-config package" do
       versions = all_pkg_config_versions.reject do |package, _version|
         package.start_with?("lasem")
@@ -216,6 +254,33 @@ RSpec.describe Lasem::DependencyDoctor do
       expect(status).to eq(1)
       expect(output.string).to include("Lasem setup warnings:")
       expect(output.string).to include("Dependency warnings:")
+    end
+
+    it "reports an invalid option without raising" do
+      errio = StringIO.new
+      status = described_class.call(
+        ["--nope"],
+        output: StringIO.new,
+        error: errio,
+        root: root,
+        probe: probe,
+      )
+
+      expect(status).to eq(2)
+      expect(errio.string).to include("invalid option")
+    end
+  end
+
+  describe described_class::Probe do
+    subject(:real_probe) { described_class.new }
+
+    it "detects an executable present on PATH" do
+      expect(real_probe.executable?("ruby")).to be(true)
+    end
+
+    it "reports an absent executable as missing" do
+      expect(real_probe.executable?("lasem-not-a-real-binary-xyz"))
+        .to be(false)
     end
   end
 end

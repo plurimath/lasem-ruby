@@ -30,7 +30,7 @@ module Lasem
       def call
         parser.parse!(argv)
         run_doctor
-      rescue OptionParser::InvalidOption => e
+      rescue OptionParser::ParseError => e
         error.puts(e.message)
         error.puts(parser)
         2
