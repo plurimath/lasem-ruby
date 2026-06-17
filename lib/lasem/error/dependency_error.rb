@@ -1,7 +1,11 @@
 # frozen_string_literal: true
 
+require_relative "../error"
+
 module Lasem
-  class DependencyError < Error
+  class DependencyError < StandardError
+    include Error
+
     MESSAGE = "Lasem native library is not available. Install a system " \
               "Lasem development package, then rebuild the gem. Run " \
               "`lasem-doctor --all-warnings` or `bundle exec rake " \

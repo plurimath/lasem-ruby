@@ -22,11 +22,14 @@ Gem::Specification.new do |spec|
     "source_code_uri" => spec.homepage,
   }
 
-  # Specify which files should be added to the gem when it is released.
-  # The `git ls-files -z` loads files that have been added to git.
+  # Ship only what the installed gem needs: lib/, ext/, exe/, rakelib/, README
+  # and LICENSE. Exclude tests, the vendored Lasem source (resolved via system
+  # pkg-config at install time), dev/CI scaffolding, docs assets, and dotfiles.
   spec.files = Dir.chdir(File.expand_path(__dir__)) do
     `git ls-files -z`.split("\x0").reject do |f|
-      f.match(%r{^(test|spec|features|vendor)/})
+      f.match(%r{\A(?:test|spec|features|vendor|bin|docs|\.github)/}) ||
+        f.match(/\A\.(?:git|rspec|rubocop)/) ||
+        f == "Gemfile"
     end
   end
 

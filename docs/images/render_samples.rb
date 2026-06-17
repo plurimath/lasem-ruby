@@ -10,6 +10,7 @@ require "lasem"
 abort "Lasem native extension not available" unless Lasem.native_available?
 
 OUT_DIR = File.expand_path(__dir__)
+# Padding around each equation, in user units (points).
 PADDING_X = 24
 PADDING_Y = 18
 
@@ -59,21 +60,26 @@ def png_size(png)
 end
 
 SAMPLES.each do |sample|
+  ppi = sample[:ppi]
   natural_png = Lasem.render(
     sample[:source],
     input: sample[:input],
     output: :png,
-    ppi: sample[:ppi],
+    ppi: ppi,
   )
-  natural_width, natural_height = png_size(natural_png)
+  natural_width_px, natural_height_px = png_size(natural_png)
+  # png_size returns pixels; width/height/offset are user units (points).
+  px_to_pt = 72.0 / ppi
+  width_pt = (natural_width_px * px_to_pt) + (2 * PADDING_X)
+  height_pt = (natural_height_px * px_to_pt) + (2 * PADDING_Y)
 
   png = Lasem.render(
     sample[:source],
     input: sample[:input],
     output: :png,
-    ppi: sample[:ppi],
-    width: natural_width + (2 * PADDING_X),
-    height: natural_height + (2 * PADDING_Y),
+    ppi: ppi,
+    width: width_pt,
+    height: height_pt,
     offset_x: -PADDING_X,
     offset_y: -PADDING_Y,
   )
