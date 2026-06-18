@@ -17,29 +17,25 @@ module Lasem
 
     private
 
-    # String.try_convert returns nil for anything that is not String-like
-    # (so nil/Symbol/Integer are rejected cleanly) and raises TypeError only
-    # when a #to_str is present but misbehaves -- which we deliberately let
-    # surface rather than masking it as an empty-source error.
+    # String.try_convert returns nil for non-String-like input (nil/Symbol/
+    # Integer), which we reject. A misbehaving #to_str (raising, or returning a
+    # non-String) propagates to the caller -- a programmer error on their
+    # object, not a Lasem input error, so we let it surface unmasked.
+    #
+    # Encoding is the caller's responsibility: XML/MathML/SVG declare their own
+    # encoding and Lasem (libxml2) reads it, so we pass bytes through untouched
+    # and let Lasem report bad input as a RenderError. The blank check is
+    # byte-level: `.b.strip` trims ASCII whitespace and NUL without decoding
+    # (so it never raises on non-UTF-8 bytes), so e.g. a BOM-only UTF-16 string
+    # is still non-empty afterwards, passes through, and surfaces as a
+    # RenderError.
     def normalize_source(source)
       normalized = String.try_convert(source)
-      raise OptionError.non_empty_source if normalized.nil?
-
-      # Transcode before the emptiness check: String#strip raises on
-      # ASCII-incompatible encodings (e.g. UTF-16).
-      normalized = normalize_encoding(normalized)
-      raise OptionError.non_empty_source if normalized.strip.empty?
+      if normalized.nil? || normalized.b.strip.empty?
+        raise OptionError.non_empty_source
+      end
 
       normalized
-    end
-
-    # Lasem's parsers read UTF-8 bytes; transcode text in another encoding so
-    # callers passing e.g. UTF-16 source do not feed mis-decoded bytes to the
-    # parser. Binary/UTF-8 strings are passed through unchanged.
-    def normalize_encoding(source)
-      return source if [Encoding::UTF_8, Encoding::BINARY].include?(source.encoding)
-
-      source.encode(Encoding::UTF_8)
     end
   end
 end

@@ -30,7 +30,7 @@ namespaced as `Lasem`.
 [#prerequisites]
 == Prerequisites
 
-`lasem` is a native extension. Ruby 3.2 or newer is required, and the upstream
+`lasem` is a native extension. Ruby 3.3 or newer is required, and the upstream
 Lasem C library must be available for rendering support.
 
 The released gem does not package or build the upstream Lasem C library. If
@@ -315,6 +315,7 @@ If `Lasem.render` raises `Lasem::DependencyError`, the gem is loading the stub
 extension. Rebuild after installing Lasem (see <<native-dependency>>).
 
 
+[#vendored-lasem]
 == Vendored Lasem (source checkout)
 
 The vendored build is a development helper for source checkouts. It is not
@@ -338,7 +339,7 @@ license files with the vendored source when updating it.
 
 == Development
 
-Ruby 3.2 or newer is required.
+Ruby 3.3 or newer is required.
 
 [source,sh]
 ----
@@ -346,6 +347,11 @@ bundle install
 bundle exec rake          # runs RSpec
 bundle exec rubocop
 ----
+
+Rendering specs are skipped unless the native extension is built against a
+usable Lasem. In a source checkout, build the vendored Lasem first (see
+<<vendored-lasem,Vendored Lasem (source checkout)>>) — that is the development
+step that requires `git submodule update --init vendor/lasem/source`.
 
 Environment variables understood by the build:
 
