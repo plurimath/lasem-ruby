@@ -4,4 +4,4 @@ inherit_from:
   - https://raw.githubusercontent.com/riboseinc/oss-guides/main/ci/rubocop.yml
 
 AllCops:
-  TargetRubyVersion: 3.2
+  TargetRubyVersion: 3.3

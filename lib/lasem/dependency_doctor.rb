@@ -171,7 +171,12 @@ module Lasem
       ].compact
     end
 
+    # Only relevant in a source checkout (where .gitmodules is present and the
+    # vendored build applies). The published gem ships no .gitmodules, so this
+    # never advises installed-gem users to run a meaningless submodule command.
     def missing_submodule_warning
+      return unless probe.file?(File.join(root, ".gitmodules"))
+
       source_meson = File.join(root, "vendor/lasem/source/meson.build")
       return if probe.file?(source_meson)
 

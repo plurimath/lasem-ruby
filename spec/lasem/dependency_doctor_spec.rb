@@ -185,6 +185,27 @@ RSpec.describe Lasem::DependencyDoctor do
       expect(report.to_s).to include(vendored_pc_dir)
     end
 
+    it "advises a submodule init only in a source checkout (.gitmodules)" do
+      report = described_class.new(
+        root: root,
+        probe: probe(executables: apt_executables,
+                     pkg_config_versions: all_pkg_config_versions,
+                     files: ["/repo/.gitmodules"]),
+      ).report(lasem_conflict_warnings: true)
+
+      expect(report.to_s).to include("git submodule update --init")
+    end
+
+    it "omits submodule advice for an installed gem (no .gitmodules)" do
+      report = described_class.new(
+        root: root,
+        probe: probe(executables: apt_executables,
+                     pkg_config_versions: all_pkg_config_versions),
+      ).report(lasem_conflict_warnings: true)
+
+      expect(report.to_s).not_to include("git submodule update")
+    end
+
     it "uses the first resolved Lasem pkg-config candidate in setup warnings" do
       vendored_pc_dir = "/repo/vendor/lasem/install/lib/pkgconfig"
       report = with_lasem_pkg_config(nil) do
@@ -259,7 +280,7 @@ RSpec.describe Lasem::DependencyDoctor do
         output: output,
         error: StringIO.new,
         root: root,
-        probe: probe,
+        probe: probe(files: ["/repo/.gitmodules"]),
       )
 
       expect(status).to eq(1)
