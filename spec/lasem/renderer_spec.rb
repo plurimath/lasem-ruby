@@ -221,6 +221,9 @@ RSpec.describe Lasem::Renderer do
     it "raises a render error for unparseable input" do
       skip_without_native_lasem
 
+      # Linux returns no GError (our fallback); macOS/Windows set one
+      # ("Invalid document"). lasem_raise_gerror prefixes our context either
+      # way, so /could not parse/ holds on every platform.
       expect do
         described_class.render("not xml at all >>><<<", input: :mathml)
       end.to raise_error(Lasem::RenderError, /could not parse/)
