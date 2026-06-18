@@ -62,19 +62,21 @@ lasem_define_error_class(VALUE parent, const char *name, VALUE marker)
 }
 
 static void
-lasem_raise_gerror(VALUE error_class, GError *error, const char *fallback_message)
+lasem_raise_gerror(VALUE error_class, GError *error, const char *context_message)
 {
 	if (error != NULL) {
-		/* Copy the message onto the stack and free the GError before any Ruby
-		 * allocation, so a raising allocation cannot leak the GError. */
-		char message[512];
+		/* Copy the detail onto the stack and free the GError before any Ruby
+		 * allocation, so a raising allocation cannot leak the GError. Always
+		 * prefix our own context so the message is stable across libxml2
+		 * versions, which otherwise vary (e.g. "Invalid document"). */
+		char detail[512];
 
-		g_strlcpy(message, error->message, sizeof(message));
+		g_strlcpy(detail, error->message, sizeof(detail));
 		g_error_free(error);
-		rb_raise(error_class, "%s", message);
+		rb_raise(error_class, "%s: %s", context_message, detail);
 	}
 
-	rb_raise(error_class, "%s", fallback_message);
+	rb_raise(error_class, "%s", context_message);
 }
 
 /* Growable C byte buffer used to collect Cairo output. The Ruby result string
