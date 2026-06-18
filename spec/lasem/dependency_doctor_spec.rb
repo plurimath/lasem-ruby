@@ -3,6 +3,7 @@
 # rubocop:disable RSpec/ExampleLength, RSpec/MultipleExpectations
 
 require "stringio"
+require "tmpdir"
 
 RSpec.describe Lasem::DependencyDoctor do
   let(:fake_probe_class) do
@@ -62,6 +63,16 @@ RSpec.describe Lasem::DependencyDoctor do
         files: [],
       }.merge(overrides),
     )
+  end
+
+  def with_env(values)
+    original = values.keys.to_h { |key| [key, ENV.fetch(key, nil)] }
+    values.each { |key, value| ENV[key] = value }
+    yield
+  ensure
+    original.each do |key, value|
+      value.nil? ? ENV.delete(key) : ENV[key] = value
+    end
   end
 
   def with_lasem_pkg_config(value)
@@ -281,6 +292,32 @@ RSpec.describe Lasem::DependencyDoctor do
     it "reports an absent executable as missing" do
       expect(real_probe.executable?("lasem-not-a-real-binary-xyz"))
         .to be(false)
+    end
+
+    it "finds a Windows executable by its PATHEXT extension" do
+      Dir.mktmpdir do |dir|
+        tool = File.join(dir, "tool.exe")
+        File.write(tool, "")
+        File.chmod(0o755, tool)
+        allow(Gem).to receive(:win_platform?).and_return(true)
+
+        with_env("PATH" => dir, "PATHEXT" => ".EXE") do
+          expect(real_probe.executable?("tool")).to be(true)
+        end
+      end
+    end
+
+    it "does not append executable extensions off Windows" do
+      Dir.mktmpdir do |dir|
+        tool = File.join(dir, "tool.exe")
+        File.write(tool, "")
+        File.chmod(0o755, tool)
+        allow(Gem).to receive(:win_platform?).and_return(false)
+
+        with_env("PATH" => dir) do
+          expect(real_probe.executable?("tool")).to be(false)
+        end
+      end
     end
   end
 end
