@@ -198,6 +198,18 @@ lasem_supported_output_format(const char *format)
 	       strcmp(format, "png") == 0;
 }
 
+/* Mirrors Lasem::RenderOptions::INPUT_TYPES. xml/mathml/svg use the XML parser,
+ * latex/itex use the itex parser; anything else is rejected. */
+static int
+lasem_supported_input_type(const char *input_type)
+{
+	return strcmp(input_type, "xml") == 0 ||
+	       strcmp(input_type, "mathml") == 0 ||
+	       strcmp(input_type, "svg") == 0 ||
+	       strcmp(input_type, "latex") == 0 ||
+	       strcmp(input_type, "itex") == 0;
+}
+
 static LsmDomDocument *
 lasem_document_from_input(const char *input, gssize input_size, const char *input_type, GError **error)
 {
@@ -306,6 +318,9 @@ lasem_native_render(VALUE self, VALUE input_value, VALUE input_type_value, VALUE
 	}
 	if (!lasem_supported_output_format(format)) {
 		rb_raise(e_render_error, "unsupported output format: %s", format);
+	}
+	if (!lasem_supported_input_type(input_type)) {
+		rb_raise(e_render_error, "unsupported input type: %s", input_type);
 	}
 	if (explicit_size) {
 		width_pt = zoom * NUM2DBL(width_value);

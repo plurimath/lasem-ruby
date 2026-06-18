@@ -255,6 +255,16 @@ RSpec.describe Lasem::Renderer do
       end.to raise_error(Lasem::RenderError, /ppi/)
     end
 
+    it "rejects an unsupported input type at the native boundary" do
+      skip_without_native_lasem
+
+      expect do
+        Lasem::Native.render(
+          mathml, "bogus", "svg", 72.0, 1.0, nil, nil, 0.0, 0.0
+        )
+      end.to raise_error(Lasem::RenderError, /input type/)
+    end
+
     it "surfaces a dependency error from the native loader" do
       # Deterministic (does not depend on native availability): verifies the
       # contract a consumer like Plurimath rescues when only the stub is loaded.
