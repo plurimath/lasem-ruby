@@ -99,6 +99,13 @@ RSpec.describe Lasem::Renderer do
       end.to raise_error(Lasem::OptionError, /source/)
     end
 
+    it "rejects empty and ASCII-whitespace source" do
+      ["", "   ", "\t\n "].each do |blank|
+        expect { described_class.render(blank) }
+          .to raise_error(Lasem::OptionError, /source/)
+      end
+    end
+
     it "does not mask a malformed #to_str as an empty-source error" do
       bad = Object.new
       def bad.to_str = 123
@@ -106,13 +113,14 @@ RSpec.describe Lasem::Renderer do
       expect { described_class.render(bad) }.to raise_error(TypeError)
     end
 
-    it "transcodes non-UTF-8 source to UTF-8 before rendering" do
+    it "passes source through without transcoding (encoding is the caller's)" do
       stub_native_render
+      source = mathml.encode(Encoding::UTF_16)
 
-      described_class.render(mathml.encode(Encoding::UTF_16), input: :mathml)
+      described_class.render(source, input: :mathml)
 
-      expect(Lasem::NativeLoader).to have_received(:render) do |source, *|
-        expect(source.encoding).to eq(Encoding::UTF_8)
+      expect(Lasem::NativeLoader).to have_received(:render) do |passed, *|
+        expect(passed.encoding).to eq(Encoding::UTF_16)
       end
     end
 
