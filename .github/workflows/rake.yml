@@ -61,4 +61,4 @@ jobs:
         esac
         ruby -Ilib -rlasem -e 'abort "Lasem native extension unavailable" unless Lasem.native_available?'
     secrets:
-      pat_token: ${{ secrets.METANORMA_CI_PAT_TOKEN }}
+      pat_token: ${{ secrets.PLURIMATH_CI_PAT_TOKEN }}
